@@ -1503,10 +1503,10 @@ export default function DesignSystemPage() {
                     alignItems: "center",
                     padding: 10,
                     borderRadius: "var(--r-md)",
-                    background: row.highlight
+                    background: ("highlight" in row && row.highlight)
                       ? "color-mix(in oklch, var(--accent) 8%, transparent)"
                       : "var(--surface)",
-                    border: row.highlight
+                    border: ("highlight" in row && row.highlight)
                       ? "1px solid color-mix(in oklch, var(--accent) 25%, transparent)"
                       : "1px solid transparent",
                   }}
@@ -1514,7 +1514,7 @@ export default function DesignSystemPage() {
                   <span
                     className="t-display-md"
                     style={{
-                      color: row.highlight ? "var(--accent)" : "var(--fg-muted)",
+                      color: ("highlight" in row && row.highlight) ? "var(--accent)" : "var(--fg-muted)",
                       textAlign: "center",
                     }}
                   >
@@ -1541,7 +1541,7 @@ export default function DesignSystemPage() {
                     className="t-num"
                     style={{
                       fontSize: 22,
-                      color: row.highlight ? "var(--accent)" : "var(--fg)",
+                      color: ("highlight" in row && row.highlight) ? "var(--accent)" : "var(--fg)",
                     }}
                   >
                     {row.points}

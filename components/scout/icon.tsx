@@ -1,3 +1,4 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
 const SCOUT_ICONS = {
@@ -72,11 +73,11 @@ const SCOUT_ICONS = {
 
 export type ScoutIconName = keyof typeof SCOUT_ICONS;
 
-interface ScoutIconProps {
+interface ScoutIconProps
+  extends Omit<SVGProps<SVGSVGElement>, "name" | "stroke"> {
   name: ScoutIconName;
   size?: number;
   stroke?: number;
-  className?: string;
 }
 
 export function ScoutIcon({
@@ -84,6 +85,7 @@ export function ScoutIcon({
   size = 20,
   stroke = 2,
   className,
+  ...rest
 }: ScoutIconProps) {
   return (
     <svg
@@ -98,6 +100,7 @@ export function ScoutIcon({
       strokeLinejoin="round"
       className={cn("icon", className)}
       dangerouslySetInnerHTML={{ __html: SCOUT_ICONS[name] }}
+      {...rest}
     />
   );
 }
