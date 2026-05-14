@@ -12,6 +12,7 @@ import { getUserStats, getRecentSessions } from "@/lib/games/queries";
 import { getUserTeam } from "@/lib/teams/queries";
 import { getActiveMissions } from "@/lib/missions/queries";
 import { GAMES, getGame } from "@/lib/games/registry";
+import { getUserInsignias, countUnlocked } from "@/lib/insignias/queries";
 
 function formatRelative(iso: string) {
   const t = new Date(iso).getTime();
@@ -49,6 +50,15 @@ export default async function DashboardPage() {
   const allMissions = auth.authenticated && auth.userId
     ? await getActiveMissions(auth.userId)
     : null;
+  const insignias = auth.authenticated && auth.userId
+    ? await getUserInsignias(auth.userId)
+    : [];
+  const insigniasUnlocked = countUnlocked(insignias);
+  const insigniasShowcase = insignias.filter((i) => i.unlocked).slice(0, 5);
+  const insigniasPreview =
+    insigniasShowcase.length > 0
+      ? insigniasShowcase
+      : insignias.slice(0, 5);
   const dashboardMissions = allMissions
     ? allMissions
         .filter((m) => m.kind === "individual" && !m.completed)
@@ -255,25 +265,24 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Insignias"
-          value="12"
-          link={{ label: "Ver todas →" }}
+          value={insigniasUnlocked.toString()}
+          link={{ label: "Ver todas →", href: "/profile" }}
           footer={
             <div className="flex items-center gap-1.5">
-              <BadgeCircle color="purple" size={28} ringed>
-                <ScoutIcon name="starfill" size={14} stroke={2.2} />
-              </BadgeCircle>
-              <BadgeCircle color="rose" size={28} ringed>
-                <ScoutIcon name="shield" size={14} />
-              </BadgeCircle>
-              <BadgeCircle color="gold" size={28} ringed>
-                <ScoutIcon name="starfill" size={14} stroke={2.2} />
-              </BadgeCircle>
-              <BadgeCircle color="orange" size={28} ringed>
-                <ScoutIcon name="flame" size={14} />
-              </BadgeCircle>
-              <BadgeCircle color="sky" size={28} ringed>
-                <ScoutIcon name="leaf" size={14} />
-              </BadgeCircle>
+              {insigniasPreview.map((i) => (
+                <BadgeCircle
+                  key={i.def.slug}
+                  color={i.unlocked ? i.def.color : "locked"}
+                  size={28}
+                  ringed={i.unlocked}
+                >
+                  <ScoutIcon
+                    name={i.unlocked ? i.def.icon : "lock"}
+                    size={14}
+                    stroke={2}
+                  />
+                </BadgeCircle>
+              ))}
             </div>
           }
         />

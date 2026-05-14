@@ -328,9 +328,9 @@ export default async function ProfilePage() {
             className="grid"
             style={{ gridTemplateColumns: "repeat(6, 1fr)", gap: 14 }}
           >
-            {INSIGNIAS.map((b) => (
+            {insignias.map((i) => (
               <div
-                key={b.name}
+                key={i.def.slug}
                 className="flex flex-col items-center"
                 style={{
                   gap: 6,
@@ -340,12 +340,12 @@ export default async function ProfilePage() {
                 }}
               >
                 <BadgeCircle
-                  color={b.locked ? "locked" : b.color}
+                  color={i.unlocked ? i.def.color : "locked"}
                   size={56}
-                  ringed={!b.locked}
+                  ringed={i.unlocked}
                 >
                   <ScoutIcon
-                    name={b.locked ? "lock" : b.icon}
+                    name={i.unlocked ? i.def.icon : "lock"}
                     size={26}
                     stroke={1.8}
                   />
@@ -355,10 +355,10 @@ export default async function ProfilePage() {
                   style={{
                     textAlign: "center",
                     fontWeight: 600,
-                    color: b.locked ? "var(--fg-soft)" : "var(--fg)",
+                    color: i.unlocked ? "var(--fg)" : "var(--fg-soft)",
                   }}
                 >
-                  {b.name}
+                  {i.def.title}
                 </div>
               </div>
             ))}
