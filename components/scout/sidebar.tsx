@@ -35,7 +35,7 @@ export function Sidebar({ auth }: { auth: AuthState }) {
     >
       <Link
         href="/"
-        className="mb-6 inline-flex px-2"
+        className="mb-6 inline-flex"
         aria-label="BendScout"
       >
         <Image
@@ -44,7 +44,7 @@ export function Sidebar({ auth }: { auth: AuthState }) {
           width={400}
           height={120}
           priority
-          className="h-10 w-auto select-none"
+          className="h-16 w-auto select-none"
         />
       </Link>
 

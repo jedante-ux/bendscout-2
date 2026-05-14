@@ -60,6 +60,18 @@ export const GAMES: GameDefinition[] = [
     route: "/play/ley-scout",
   },
   {
+    key: "constelaciones",
+    title: "Mapa Estelar",
+    tagline:
+      "Identifica la constelación correcta antes que se acabe el tiempo. ¡60 segundos contra el reloj!",
+    category: "orientation",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "✨",
+    imageSrc: "/icons/orientacion-mapas.png",
+    status: "live",
+    route: "/play/constelaciones",
+  },
+  {
     key: "trail-signs",
     title: "Pistas del Sendero",
     tagline: "Descifra señales de rastreo en la naturaleza.",
@@ -72,12 +84,14 @@ export const GAMES: GameDefinition[] = [
   {
     key: "first-response",
     title: "Primera Respuesta",
-    tagline: "Decide rápido la acción correcta en emergencias.",
+    tagline:
+      "Decide rápido la acción correcta en cada emergencia. ¡60 segundos contra el reloj!",
     category: "first_aid",
-    difficulties: ["medium", "hard"],
+    difficulties: ["easy", "medium", "hard"],
     emoji: "⛑️",
     imageSrc: "/icons/primeros-auxilios.png",
-    status: "soon",
+    status: "live",
+    route: "/play/primera-respuesta",
   },
 ];
 
