@@ -58,6 +58,11 @@ const GAMES: Game[] = [
   { id: "hist", gameKey: "historia", title: "Historia Scout", sub: "Ordena los hitos cronológicos", color: "orange", emoji: "📜", time: "1 min", imageSrc: "/icons/fogata.png", href: "/play/historia", isNew: true },
   { id: "bru", gameKey: "brujula", title: "Brújula al Rumbo", sub: "Gira al rumbo correcto", color: "gold", emoji: "🧭", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/brujula", isNew: true },
   { id: "hue", gameKey: "huellas", title: "Caza de Huellas", sub: "Toca solo el animal correcto", color: "purple", emoji: "🐾", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/huellas", isNew: true },
+  { id: "cley", gameKey: "completa-ley", title: "Completa la Ley", sub: "La palabra que falta", color: "mint", emoji: "📜", time: "1 min", imageSrc: "/icons/fogata.png", href: "/play/completa-ley", isNew: true },
+  { id: "npas", gameKey: "nudo-pasos", title: "Nudo paso-a-paso", sub: "Ordena los pasos del nudo", color: "orange", emoji: "🪢", time: "1 min", imageSrc: "/icons/nudos.png", href: "/play/nudo-pasos", isNew: true },
+  { id: "sopa", gameKey: "sopa-letras", title: "Sopa de Letras", sub: "Caza palabras en la grilla", color: "gold", emoji: "🔤", time: "1 min", imageSrc: "/icons/fogata.png", href: "/play/sopa-letras", isNew: true },
+  { id: "dif", gameKey: "diferencias", title: "Diferencias", sub: "Encuentra las 5", color: "sky", emoji: "🔍", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/diferencias", isNew: true },
+  { id: "carp", gameKey: "construye-carpa", title: "Construye la Carpa", sub: "Arma la carpa en orden", color: "teal", emoji: "⛺", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/construye-carpa", isNew: true },
 ];
 
 async function getPlayedGameKeys(

@@ -189,6 +189,66 @@ export const GAMES: GameDefinition[] = [
     status: "live",
     route: "/play/laberinto",
   },
+  {
+    key: "completa-ley",
+    title: "Completa la Ley",
+    tagline:
+      "Completa la frase de la Ley Scout con la palabra correcta. ¡60 segundos!",
+    category: "law",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "📜",
+    imageSrc: "/icons/fogata.png",
+    status: "live",
+    route: "/play/completa-ley",
+  },
+  {
+    key: "nudo-pasos",
+    title: "Nudo paso-a-paso",
+    tagline:
+      "Ordena los 4 pasos del nudo correctamente. Aprende nudos rápido.",
+    category: "knots",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🪢",
+    imageSrc: "/icons/nudos.png",
+    status: "live",
+    route: "/play/nudo-pasos",
+  },
+  {
+    key: "sopa-letras",
+    title: "Sopa de Letras Scout",
+    tagline:
+      "Encuentra las palabras scout escondidas en la grilla. ¡Arrastra y caza!",
+    category: "history",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🔤",
+    imageSrc: "/icons/fogata.png",
+    status: "live",
+    route: "/play/sopa-letras",
+  },
+  {
+    key: "diferencias",
+    title: "Encuentra las Diferencias",
+    tagline:
+      "Compara las dos escenas de campamento y toca las 5 diferencias.",
+    category: "nature",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🔍",
+    imageSrc: "/icons/tarzan.png",
+    status: "live",
+    route: "/play/diferencias",
+  },
+  {
+    key: "construye-carpa",
+    title: "Construye la Carpa",
+    tagline:
+      "Arrastra cada pieza en el orden correcto al lugar correcto. ¡Arma la carpa!",
+    category: "nature",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "⛺",
+    imageSrc: "/icons/tarzan.png",
+    status: "live",
+    route: "/play/construye-carpa",
+  },
 ];
 
 export function getGame(key: string) {
