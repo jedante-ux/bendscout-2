@@ -3,9 +3,13 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { ScoutIcon } from "@/components/scout/icon";
-import { loginAction, type ActionResult } from "../actions";
+import {
+  loginAction,
+  continueAsGuestAction,
+  type ActionResult,
+} from "../actions";
 
-export function LoginForm() {
+export function LoginForm({ next = "" }: { next?: string }) {
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData
@@ -16,7 +20,9 @@ export function LoginForm() {
   const genericError = state && !state.ok && !state.field ? state.error : null;
 
   return (
+    <>
     <form action={formAction} className="vstack" style={{ gap: 14 }}>
+      {next && <input type="hidden" name="next" value={next} />}
       <div className="reveal-up" style={{ animationDelay: "500ms" }}>
         <label
           className="t-overline text-muted"
@@ -48,7 +54,7 @@ export function LoginForm() {
             Contraseña
           </label>
           <Link
-            href="#"
+            href="/forgot-password"
             className="t-caption link-underline"
             style={{ color: "var(--primary)", fontWeight: 700 }}
           >
@@ -97,7 +103,9 @@ export function LoginForm() {
         {pending ? "Entrando…" : "Entrar"}
         <ScoutIcon name="arrow" size={16} />
       </button>
+    </form>
 
+    <div className="vstack" style={{ gap: 14 }}>
       <div
         className="reveal-up"
         style={{
@@ -113,13 +121,16 @@ export function LoginForm() {
         <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
       </div>
 
-      <Link
-        href="/dashboard?guest=1"
-        className="btn btn-outline reveal-up"
-        style={{ width: "100%", animationDelay: "820ms" }}
-      >
-        <ScoutIcon name="user" size={16} /> Continuar como invitado
-      </Link>
+      <form action={continueAsGuestAction}>
+        {next && <input type="hidden" name="next" value={next} />}
+        <button
+          type="submit"
+          className="btn btn-outline reveal-up"
+          style={{ width: "100%", animationDelay: "820ms" }}
+        >
+          <ScoutIcon name="user" size={16} /> Continuar como invitado
+        </button>
+      </form>
 
       <p
         className="t-caption text-muted reveal-up"
@@ -131,13 +142,14 @@ export function LoginForm() {
       >
         ¿Sin cuenta?{" "}
         <Link
-          href="/signup"
+          href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
           className="link-underline"
           style={{ color: "var(--primary)", fontWeight: 700 }}
         >
           Únete a la tropa →
         </Link>
       </p>
-    </form>
+    </div>
+    </>
   );
 }

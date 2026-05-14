@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { safeNextPath } from "@/lib/auth/safe-redirect";
 
 const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z
@@ -56,7 +57,8 @@ export async function signupAction(
   cookieStore.delete("scout_guest");
 
   revalidatePath("/", "layout");
-  redirect("/onboarding/team");
+  const next = safeNextPath(String(formData.get("next") ?? ""), "/onboarding/team");
+  redirect(next);
 }
 
 export async function loginAction(
@@ -81,7 +83,8 @@ export async function loginAction(
   cookieStore.delete("scout_guest");
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  const next = safeNextPath(String(formData.get("next") ?? ""), "/dashboard");
+  redirect(next);
 }
 
 export async function logoutAction() {
@@ -93,7 +96,69 @@ export async function logoutAction() {
   redirect("/");
 }
 
-export async function continueAsGuestAction() {
+export async function forgotPasswordAction(
+  _prev: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const email = String(formData.get("email") ?? "").trim();
+  const e = emailSchema.safeParse(email);
+  if (!e.success)
+    return { ok: false, error: e.error.issues[0].message, field: "email" };
+
+  const supabase = await createClient();
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl}/api/auth/callback?next=/reset-password`,
+  });
+
+  // Always show success message even if email doesn't exist (no email enumeration)
+  if (error && !error.message.toLowerCase().includes("rate")) {
+    return { ok: false, error: humanizeAuthError(error.message) };
+  }
+
+  return { ok: true };
+}
+
+export async function resetPasswordAction(
+  _prev: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  const p = passwordSchema.safeParse(password);
+  if (!p.success)
+    return { ok: false, error: p.error.issues[0].message, field: "password" };
+
+  if (password !== confirmPassword) {
+    return {
+      ok: false,
+      error: "Las contraseñas no coinciden",
+      field: "password",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return {
+      ok: false,
+      error: "Tu enlace expiró. Solicita uno nuevo.",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    return { ok: false, error: humanizeAuthError(error.message) };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+export async function continueAsGuestAction(formData?: FormData) {
   const cookieStore = await cookies();
   cookieStore.set("scout_guest", "1", {
     httpOnly: false,
@@ -102,7 +167,11 @@ export async function continueAsGuestAction() {
     path: "/",
     maxAge: 60 * 60 * 24 * 7, // 7 días
   });
-  redirect("/dashboard?guest=1");
+  const next = safeNextPath(
+    String(formData?.get("next") ?? ""),
+    "/dashboard",
+  );
+  redirect(next);
 }
 
 function humanizeAuthError(msg: string): string {

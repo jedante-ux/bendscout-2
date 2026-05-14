@@ -1,8 +1,16 @@
 import Image from "next/image";
 import { ScoutIcon } from "@/components/scout/icon";
 import { LoginForm } from "./login-form";
+import { safeNextPath } from "@/lib/auth/safe-redirect";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const params = await searchParams;
+  const next = safeNextPath(params.next, "");
+
   return (
     <main
       style={{
@@ -15,7 +23,7 @@ export default function LoginPage() {
       className="login-grid"
     >
       <BrandPanel />
-      <FormPanel />
+      <FormPanel next={next} />
 
       <style>{`
         /* ---- Tablet (≤ 960px): collapse to one column, brand becomes hero strip ---- */
@@ -240,7 +248,7 @@ function Stat({
   );
 }
 
-function FormPanel() {
+function FormPanel({ next }: { next: string }) {
   return (
     <div
       className="login-form-panel reveal-right"
@@ -276,7 +284,7 @@ function FormPanel() {
           Continúa tu camino scout donde lo dejaste.
         </p>
 
-        <LoginForm />
+        <LoginForm next={next} />
       </div>
     </div>
   );

@@ -2,8 +2,17 @@ import Link from "next/link";
 import Image from "next/image";
 import { ScoutIcon } from "@/components/scout/icon";
 import { SignupForm } from "./signup-form";
+import { safeNextPath } from "@/lib/auth/safe-redirect";
+import { continueAsGuestAction } from "../actions";
 
-export default function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const params = await searchParams;
+  const next = safeNextPath(params.next, "");
+
   return (
     <main
       style={{
@@ -16,7 +25,7 @@ export default function SignupPage() {
       className="signup-grid"
     >
       <BrandPanel />
-      <FormPanel />
+      <FormPanel next={next} />
 
       <style>{`
         @media (max-width: 960px) {
@@ -159,7 +168,7 @@ function BrandPanel() {
   );
 }
 
-function FormPanel() {
+function FormPanel({ next }: { next: string }) {
   return (
     <div
       className="signup-form-panel reveal-right"
@@ -195,21 +204,33 @@ function FormPanel() {
           Tu progreso, insignias y patrulla se guardan automáticamente.
         </p>
 
-        <SignupForm />
+        <SignupForm next={next} />
 
-        <p
-          className="t-caption text-soft reveal-up"
+        <form
+          action={continueAsGuestAction}
+          className="reveal-up"
           style={{ textAlign: "center", marginTop: 12, animationDelay: "920ms" }}
         >
-          ¿Solo quieres probar?{" "}
-          <Link
-            href="/dashboard?guest=1"
-            className="link-underline"
-            style={{ color: "var(--primary)", fontWeight: 700 }}
-          >
-            Entrar como invitado →
-          </Link>
-        </p>
+          {next && <input type="hidden" name="next" value={next} />}
+          <p className="t-caption text-soft" style={{ margin: 0 }}>
+            ¿Solo quieres probar?{" "}
+            <button
+              type="submit"
+              className="link-underline"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--primary)",
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: 0,
+                font: "inherit",
+              }}
+            >
+              Entrar como invitado →
+            </button>
+          </p>
+        </form>
       </div>
     </div>
   );

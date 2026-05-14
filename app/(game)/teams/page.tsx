@@ -1,11 +1,14 @@
+import Link from "next/link";
 import { Topbar } from "@/components/scout/topbar";
 import { Shield } from "@/components/scout/shield";
 import { Avatar } from "@/components/scout/avatar";
 import { XpBar } from "@/components/scout/xp-bar";
-import { MissionCard } from "@/components/scout/mission-card";
 import { ScoutIcon } from "@/components/scout/icon";
+import { getAuthState } from "@/lib/auth/session";
+import { getUserTeam, getTeamWithMembers } from "@/lib/teams/queries";
+import { leaveTeamAction } from "@/lib/teams/actions";
 
-type MemberColor =
+type TeamColor =
   | "mint"
   | "gold"
   | "rose"
@@ -14,33 +17,53 @@ type MemberColor =
   | "sky"
   | "teal";
 
-interface Member {
-  name: string;
-  role: string;
-  xp: number;
-  pos: number;
-  you?: boolean;
-  color: MemberColor;
+function colorOf(c: string | null): TeamColor {
+  const valid: TeamColor[] = [
+    "mint",
+    "gold",
+    "rose",
+    "purple",
+    "orange",
+    "sky",
+    "teal",
+  ];
+  return (valid as string[]).includes(c ?? "") ? (c as TeamColor) : "mint";
 }
 
-const MEMBERS: Member[] = [
-  { name: "ScoutMaster", role: "Líder", xp: 8560, pos: 1, you: true, color: "mint" },
-  { name: "AnaForest", role: "Subjefe", xp: 7820, pos: 2, color: "purple" },
-  { name: "LeoTrail", role: "Scout", xp: 6210, pos: 3, color: "sky" },
-  { name: "MiaKnot", role: "Scout", xp: 5440, pos: 4, color: "rose" },
-  { name: "DanWolf", role: "Scout", xp: 4910, pos: 5, color: "orange" },
-  { name: "SofPine", role: "Scout", xp: 4230, pos: 6, color: "teal" },
-  { name: "TomFire", role: "Scout", xp: 3850, pos: 7, color: "gold" },
-  { name: "EvaOak", role: "Novato", xp: 1290, pos: 8, color: "mint" },
-];
+export default async function TeamsPage() {
+  const auth = await getAuthState();
 
-export default function TeamsPage() {
+  // Guests don't have a team to show.
+  if (auth.guest && !auth.authenticated) {
+    return <GuestEmpty />;
+  }
+
+  if (!auth.authenticated) {
+    return <NoTeamEmpty title="Inicia sesión para ver tu patrulla" />;
+  }
+
+  const summary = await getUserTeam(auth.userId!);
+  if (!summary) {
+    return <NoTeamEmpty />;
+  }
+
+  const team = await getTeamWithMembers(summary.id);
+  if (!team) return <NoTeamEmpty />;
+
+  const isOwner = team.owner_id === auth.userId;
+  const totalXp = team.members.reduce((sum, m) => sum + (m.xp ?? 0), 0);
+  const color = colorOf(team.color);
+
+  // Rank members by xp desc
+  const ranked = [...team.members].sort((a, b) => (b.xp ?? 0) - (a.xp ?? 0));
+
   return (
     <>
       <Topbar
+        auth={auth}
         greeting="Mi patrulla"
-        subtitle="Lobos del Bosque · Tropa 14"
-        notifications={3}
+        subtitle={`${team.name} · ${team.members.length} ${team.members.length === 1 ? "scout" : "scouts"}`}
+        notifications={0}
       />
 
       <div className="vstack" style={{ gap: 20 }}>
@@ -54,134 +77,187 @@ export default function TeamsPage() {
             style={{
               position: "absolute",
               inset: 0,
-              background:
-                "radial-gradient(ellipse 50% 100% at 100% 50%, color-mix(in oklch, var(--c-mint) 22%, transparent), transparent 70%)",
+              background: `radial-gradient(ellipse 50% 100% at 100% 50%, color-mix(in oklch, var(--c-${color}) 22%, transparent), transparent 70%)`,
             }}
           />
           <div
             className="relative grid items-center"
             style={{ gridTemplateColumns: "auto 1fr auto", gap: 28 }}
           >
-            <Shield letter="L" color="mint" size={120} />
+            <Shield
+              letter={team.emblem ?? team.name.charAt(0).toUpperCase()}
+              color={color}
+              size={120}
+            />
             <div>
               <span
                 className="rank-tag"
                 style={{
-                  background:
-                    "color-mix(in oklch, var(--c-mint) 16%, transparent)",
-                  color: "var(--c-mint)",
-                  borderColor:
-                    "color-mix(in oklch, var(--c-mint) 30%, transparent)",
+                  background: `color-mix(in oklch, var(--c-${color}) 16%, transparent)`,
+                  color: `var(--c-${color})`,
+                  borderColor: `color-mix(in oklch, var(--c-${color}) 30%, transparent)`,
                 }}
               >
-                Patrulla mint
+                Patrulla {color}
               </span>
               <div
                 className="t-display-xl"
                 style={{ margin: "8px 0 4px", fontSize: 44 }}
               >
-                Lobos del Bosque
+                {team.name}
               </div>
               <div className="t-body-sm text-muted">
-                &quot;Aullamos en equipo, ganamos en equipo.&quot; · Fundada en
-                marzo 2025
+                Fundada{" "}
+                {new Date(team.created_at).toLocaleDateString("es", {
+                  month: "long",
+                  year: "numeric",
+                })}
+                {isOwner && " · Eres el líder ⚜️"}
               </div>
-              <div className="flex flex-wrap" style={{ gap: 28, marginTop: 18 }}>
-                <Stat label="Posición" value="#2" color="var(--accent)" />
-                <Stat label="Puntos" value="38 940" />
-                <Stat label="Scouts" value="8" />
-                <Stat label="Racha" value="12d" color="var(--c-orange)" />
+              <div
+                className="flex flex-wrap"
+                style={{ gap: 28, marginTop: 18 }}
+              >
+                <Stat label="Puntos" value={totalXp.toLocaleString("es")} />
+                <Stat label="Scouts" value={String(team.members.length)} />
+                <Stat label="Slug" value={`#${team.slug}`} />
               </div>
             </div>
             <div className="flex flex-col" style={{ gap: 8 }}>
-              <button className="btn btn-primary">
-                <ScoutIcon name="users" size={16} /> Invitar scout
-              </button>
-              <button className="btn btn-secondary">
-                <ScoutIcon name="flag" size={16} /> Retar tropa
-              </button>
-              <button className="btn btn-ghost btn-sm">
-                Chat de patrulla →
-              </button>
+              {isOwner ? (
+                <>
+                  <Link href="/teams/edit" className="btn btn-primary">
+                    <ScoutIcon name="edit" size={16} /> Editar patrulla
+                  </Link>
+                  <form action={leaveTeamAction}>
+                    <button
+                      type="submit"
+                      className="btn btn-danger"
+                      style={{ width: "100%" }}
+                    >
+                      <ScoutIcon name="close" size={16} /> Disolver patrulla
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-secondary">
+                    <ScoutIcon name="share" size={16} /> Compartir
+                  </button>
+                  <form action={leaveTeamAction}>
+                    <button
+                      type="submit"
+                      className="btn btn-ghost btn-sm"
+                      style={{
+                        width: "100%",
+                        color: "var(--c-rose)",
+                      }}
+                    >
+                      Salir de la patrulla
+                    </button>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </section>
 
-        {/* Members + side cards */}
+        {/* Members table + side cards */}
         <section
           className="grid gap-4"
-          style={{ gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)" }}
+          style={{
+            gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+          }}
         >
           <div className="scout-card" style={{ padding: 18 }}>
             <div className="between" style={{ marginBottom: 14 }}>
               <span className="t-h3">Scouts de la patrulla</span>
-              <button className="btn btn-ghost btn-sm">
-                <ScoutIcon name="filter" size={14} /> Ordenar
-              </button>
+              <span className="t-caption text-muted">
+                Ordenados por XP
+              </span>
             </div>
             <div className="vstack" style={{ gap: 6 }}>
-              {MEMBERS.map((m) => (
-                <div
-                  key={m.name}
-                  className="grid items-center"
-                  style={{
-                    gridTemplateColumns: "28px auto 1fr auto auto",
-                    gap: 12,
-                    padding: "10px 12px",
-                    borderRadius: "var(--r-md)",
-                    background: m.you
-                      ? "color-mix(in oklch, var(--primary) 10%, transparent)"
-                      : "var(--surface)",
-                    border: m.you
-                      ? "1px solid color-mix(in oklch, var(--primary) 30%, transparent)"
-                      : "1px solid transparent",
-                  }}
-                >
-                  <span
-                    className="t-display-sm"
+              {ranked.map((m, idx) => {
+                const isYou = m.id === auth.userId;
+                const pos = idx + 1;
+                return (
+                  <div
+                    key={m.id}
+                    className="grid items-center"
                     style={{
-                      color: m.pos <= 3 ? "var(--accent)" : "var(--fg-muted)",
-                      textAlign: "center",
+                      gridTemplateColumns: "28px auto 1fr auto auto",
+                      gap: 12,
+                      padding: "10px 12px",
+                      borderRadius: "var(--r-md)",
+                      background: isYou
+                        ? "color-mix(in oklch, var(--primary) 10%, transparent)"
+                        : "var(--surface)",
+                      border: isYou
+                        ? "1px solid color-mix(in oklch, var(--primary) 30%, transparent)"
+                        : "1px solid transparent",
                     }}
                   >
-                    {m.pos}
-                  </span>
-                  <Avatar name={m.name} size={40} color={m.color} ring={m.you} />
-                  <div>
-                    <div
+                    <span
+                      className="t-display-sm"
                       style={{
-                        fontWeight: 700,
-                        fontSize: 14,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
+                        color: pos <= 3 ? "var(--accent)" : "var(--fg-muted)",
+                        textAlign: "center",
                       }}
                     >
-                      {m.name}
-                      {m.you && (
-                        <span className="chip" style={{ fontSize: 9 }}>
-                          Tú
-                        </span>
-                      )}
+                      {pos}
+                    </span>
+                    <Avatar
+                      name={m.display_name ?? m.username}
+                      size={40}
+                      color={color}
+                      ring={isYou}
+                    />
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 14,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        {m.display_name ?? m.username}
+                        {isYou && (
+                          <span className="chip" style={{ fontSize: 9 }}>
+                            Tú
+                          </span>
+                        )}
+                        {m.role === "owner" && (
+                          <span
+                            className="chip chip-accent"
+                            style={{ fontSize: 9 }}
+                          >
+                            Líder
+                          </span>
+                        )}
+                      </div>
+                      <div className="t-caption text-muted">
+                        @{m.username}
+                      </div>
                     </div>
-                    <div className="t-caption text-muted">{m.role}</div>
+                    <div style={{ width: 120 }}>
+                      <XpBar value={m.xp ?? 0} max={Math.max(9000, totalXp)} />
+                    </div>
+                    <span
+                      className="t-mono"
+                      style={{
+                        fontWeight: 700,
+                        color: "var(--accent)",
+                        minWidth: 70,
+                        textAlign: "right",
+                      }}
+                    >
+                      {(m.xp ?? 0).toLocaleString("es")}
+                    </span>
                   </div>
-                  <div style={{ width: 120 }}>
-                    <XpBar value={m.xp} max={9000} />
-                  </div>
-                  <span
-                    className="t-mono"
-                    style={{
-                      fontWeight: 700,
-                      color: "var(--accent)",
-                      minWidth: 70,
-                      textAlign: "right",
-                    }}
-                  >
-                    {m.xp.toLocaleString("es")}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -189,61 +265,111 @@ export default function TeamsPage() {
             <div className="scout-card" style={{ padding: 18 }}>
               <div className="between" style={{ marginBottom: 10 }}>
                 <span className="t-h3">Misiones de patrulla</span>
-                <span className="chip chip-accent">2 activas</span>
+                <span className="chip chip-accent">Próximamente</span>
               </div>
-              <div className="vstack" style={{ gap: 10 }}>
-                <MissionCard
-                  title="Aullido coordinado"
-                  description="Todos juegan hoy"
-                  icon={<ScoutIcon name="users" size={18} />}
-                  iconColor="mint"
-                  xpReward={500}
-                  progress={{ value: 75, max: 100 }}
-                />
-                <MissionCard
-                  title="Cazar la luna"
-                  description="Ganar 3 retos seguidos"
-                  icon={<ScoutIcon name="flame" size={18} />}
-                  iconColor="purple"
-                  xpReward={800}
-                  progress={{ value: 33, max: 100 }}
-                />
-              </div>
+              <p className="t-body-sm text-muted" style={{ margin: 0 }}>
+                Cuando se habiliten las misiones grupales podrán competir como
+                tropa y ganar XP extra para todos.
+              </p>
             </div>
 
             <div className="scout-card" style={{ padding: 18 }}>
               <div className="between" style={{ marginBottom: 10 }}>
-                <span className="t-h3">Próximo desafío</span>
-                <span className="chip chip-rose">⏱ 2d 4h</span>
+                <span className="t-h3">Invitar scouts</span>
               </div>
-              <div className="flex items-center" style={{ gap: 12 }}>
-                <Shield letter="A" color="rose" size={56} />
+              <div
+                className="scout-card-flat"
+                style={{ padding: 12, marginTop: 8 }}
+              >
+                <div className="t-caption text-muted">Código de invitación</div>
                 <div
-                  style={{
-                    fontSize: 22,
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 800,
-                  }}
+                  className="t-num"
+                  style={{ fontSize: 22, color: "var(--accent)" }}
                 >
-                  VS
+                  {team.slug.slice(0, 8).toUpperCase()}
                 </div>
-                <Shield letter="L" color="mint" size={56} />
-              </div>
-              <div className="t-body-sm text-muted" style={{ marginTop: 10 }}>
-                Las{" "}
-                <b style={{ color: "var(--c-rose)" }}>Águilas Reales</b> los han
-                retado. Modo: Memoria Visual · Mejor de 5.
               </div>
               <button
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 style={{ width: "100%", marginTop: 12 }}
               >
-                Aceptar desafío
+                <ScoutIcon name="share" size={14} /> Compartir código
               </button>
             </div>
           </div>
         </section>
       </div>
+    </>
+  );
+}
+
+function NoTeamEmpty({ title = "Aún no tienes patrulla" }: { title?: string } = {}) {
+  return (
+    <>
+      <Topbar greeting="Mi patrulla" subtitle="Únete o crea una para empezar" notifications={0} />
+      <section
+        className="scout-card"
+        style={{
+          padding: 36,
+          textAlign: "center",
+          maxWidth: 480,
+          margin: "60px auto",
+        }}
+      >
+        <div className="grid place-items-center" style={{ marginBottom: 18 }}>
+          <Shield letter="?" color="mint" size={80} />
+        </div>
+        <h2 className="t-display-sm" style={{ margin: "0 0 6px" }}>
+          {title}
+        </h2>
+        <p className="t-body-sm text-muted" style={{ margin: "0 0 18px" }}>
+          En BendScout siempre formas parte de un equipo. Únete a una
+          patrulla existente o funda la tuya.
+        </p>
+        <div className="flex flex-col gap-2">
+          <Link href="/onboarding/team" className="btn btn-primary btn-lg">
+            <ScoutIcon name="users" size={16} /> Ver patrullas
+          </Link>
+          <Link href="/onboarding/team/new" className="btn btn-secondary">
+            <ScoutIcon name="plus" size={16} /> Crear nueva patrulla
+          </Link>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function GuestEmpty() {
+  return (
+    <>
+      <Topbar greeting="Mi patrulla" subtitle="Modo invitado" notifications={0} />
+      <section
+        className="scout-card"
+        style={{
+          padding: 36,
+          textAlign: "center",
+          maxWidth: 480,
+          margin: "60px auto",
+        }}
+      >
+        <div className="grid place-items-center" style={{ marginBottom: 18 }}>
+          <Shield letter="?" color="orange" size={80} />
+        </div>
+        <h2 className="t-display-sm" style={{ margin: "0 0 6px" }}>
+          Las patrullas son para scouts registrados
+        </h2>
+        <p className="t-body-sm text-muted" style={{ margin: "0 0 18px" }}>
+          Crea tu cuenta para unirte a una patrulla y competir en equipo.
+        </p>
+        <div className="flex flex-col gap-2">
+          <Link href="/signup" className="btn btn-primary btn-lg">
+            Crear cuenta
+          </Link>
+          <Link href="/login" className="btn btn-ghost">
+            Ya tengo cuenta
+          </Link>
+        </div>
+      </section>
     </>
   );
 }
@@ -260,7 +386,7 @@ function Stat({
   return (
     <div>
       <div className="t-overline text-muted">{label}</div>
-      <div className="t-num" style={{ fontSize: 32, color }}>
+      <div className="t-num" style={{ fontSize: 28, color }}>
         {value}
       </div>
     </div>

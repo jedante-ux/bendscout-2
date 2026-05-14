@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Topbar } from "@/components/scout/topbar";
 import { Avatar } from "@/components/scout/avatar";
 import { BadgeCircle } from "@/components/scout/badge-circle";
@@ -64,10 +65,25 @@ const INSIGNIAS: Array<{
   { color: "sky", icon: "lightbulb", name: "Sabio scout", locked: true },
 ];
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  const { getAuthState } = await import("@/lib/auth/session");
+  const { getUserTeam } = await import("@/lib/teams/queries");
+  const auth = await getAuthState();
+  const profile = auth.profile;
+  const team = profile ? await getUserTeam(profile.id) : null;
+
+  const displayName = profile?.display_name ?? profile?.username ?? "Invitado";
+  const username = profile?.username ?? "invitado";
+  const since = profile
+    ? new Date(profile.created_at).toLocaleDateString("es", {
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+
   return (
     <>
-      <Topbar greeting="Perfil" subtitle="Tu camino scout · resumen" notifications={3} />
+      <Topbar auth={auth} greeting="Perfil" subtitle="Tu camino scout · resumen" notifications={3} />
 
       <div className="vstack" style={{ gap: 20 }}>
         {/* Hero */}
@@ -88,14 +104,32 @@ export default function ProfilePage() {
             className="relative grid items-center"
             style={{ gridTemplateColumns: "auto 1fr auto", gap: 24 }}
           >
-            <Avatar name="ScoutMaster" size={96} ring />
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={displayName}
+                width={96}
+                height={96}
+                style={{
+                  width: 96,
+                  height: 96,
+                  borderRadius: 999,
+                  objectFit: "cover",
+                  boxShadow: "0 0 0 3px var(--bg), 0 0 0 5px var(--primary)",
+                }}
+              />
+            ) : (
+              <Avatar name={displayName} size={96} ring />
+            )}
             <div>
               <span className="rank-tag">Rango · Explorador</span>
               <div className="t-display-lg" style={{ margin: "8px 0 2px" }}>
-                ScoutMaster
+                {displayName}
               </div>
               <div className="t-body-sm text-muted">
-                Patrulla Lobos del Bosque · Tropa 14 · Desde marzo 2025
+                @{username}
+                {team && ` · Patrulla ${team.name}`}
+                {since && ` · Desde ${since}`}
               </div>
               <div className="flex flex-wrap" style={{ gap: 24, marginTop: 16 }}>
                 <Stat label="Nivel" value="24" color="var(--primary)" />
@@ -106,9 +140,9 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex flex-col" style={{ gap: 8 }}>
-              <button className="btn btn-primary">
+              <Link href="/profile/edit" className="btn btn-primary">
                 <ScoutIcon name="edit" size={16} /> Editar perfil
-              </button>
+              </Link>
               <button className="btn btn-secondary">
                 <ScoutIcon name="share" size={16} /> Compartir
               </button>

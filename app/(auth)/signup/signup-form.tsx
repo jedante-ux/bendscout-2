@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ScoutIcon } from "@/components/scout/icon";
 import { signupAction, type ActionResult } from "../actions";
 
-export function SignupForm() {
+export function SignupForm({ next = "" }: { next?: string }) {
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData
@@ -17,6 +17,7 @@ export function SignupForm() {
 
   return (
     <form action={formAction} className="vstack" style={{ gap: 14 }}>
+      {next && <input type="hidden" name="next" value={next} />}
       <div>
         <label
           className="t-overline text-muted"
