@@ -198,22 +198,49 @@ export function TarzanRunner({
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
 
-      // Cielo / fondo jungla (gradiente vertical).
+      // Cielo celeste degradado.
       const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
-      sky.addColorStop(0, "#2b3d2a");
-      sky.addColorStop(1, "#3d5c34");
+      sky.addColorStop(0, "#5fb8ff");
+      sky.addColorStop(0.55, "#a8dcff");
+      sky.addColorStop(1, "#d8f0ff");
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, GROUND);
 
-      // Parallax: árboles lejanos (placeholders).
-      ctx.fillStyle = "#1f2e1d";
-      const treeOffset = -(groundOffsetRef.current * 0.3) % 120;
-      for (let i = 0; i < 9; i++) {
-        const x = treeOffset + i * 120;
+      // Nubes parallax (lentas).
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      const cloudOffset = -(groundOffsetRef.current * 0.15) % 260;
+      for (let i = 0; i < 5; i++) {
+        const cx = cloudOffset + i * 260;
+        const cy = 80 + (i % 2) * 50;
         ctx.beginPath();
-        ctx.moveTo(x, GROUND - 90);
-        ctx.lineTo(x + 28, GROUND - 140);
-        ctx.lineTo(x + 56, GROUND - 90);
+        ctx.ellipse(cx, cy, 30, 14, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + 26, cy + 4, 22, 12, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + 52, cy, 28, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Silueta de selva al fondo (parallax medio).
+      ctx.fillStyle = "rgba(31, 70, 40, 0.85)";
+      const farOffset = -(groundOffsetRef.current * 0.3) % 160;
+      for (let i = 0; i < 8; i++) {
+        const x = farOffset + i * 160;
+        ctx.beginPath();
+        ctx.moveTo(x, GROUND - 110);
+        ctx.lineTo(x + 40, GROUND - 180);
+        ctx.lineTo(x + 80, GROUND - 110);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Silueta cercana (parallax rápido).
+      ctx.fillStyle = "rgba(20, 50, 28, 0.95)";
+      const nearOffset = -(groundOffsetRef.current * 0.55) % 110;
+      for (let i = 0; i < 12; i++) {
+        const x = nearOffset + i * 110;
+        ctx.beginPath();
+        ctx.moveTo(x, GROUND);
+        ctx.lineTo(x + 22, GROUND - 70);
+        ctx.lineTo(x + 44, GROUND);
         ctx.closePath();
         ctx.fill();
       }
@@ -224,13 +251,13 @@ export function TarzanRunner({
       // Líneas del piso para sensación de movimiento.
       ctx.strokeStyle = "#4a2f1a";
       ctx.lineWidth = 2;
-      const stride = 60;
+      const stride = 70;
       const lineOffset = -groundOffsetRef.current % stride;
       ctx.beginPath();
       for (let i = -1; i < W / stride + 2; i++) {
         const x = lineOffset + i * stride;
-        ctx.moveTo(x, GROUND + 8);
-        ctx.lineTo(x + 30, GROUND + 8);
+        ctx.moveTo(x, GROUND + 12);
+        ctx.lineTo(x + 36, GROUND + 12);
       }
       ctx.stroke();
 
@@ -404,14 +431,6 @@ export function TarzanRunner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Quitar el overlay "Listos" la primera vez que el padre nos saca de paused.
-  useEffect(() => {
-    if (!paused && readyOverlay) {
-      const t = window.setTimeout(() => setReadyOverlay(false), 50);
-      return () => window.clearTimeout(t);
-    }
-  }, [paused, readyOverlay]);
-
   // Teclado: espacio/flecha arriba = saltar, flecha abajo = agacharse.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -442,9 +461,11 @@ export function TarzanRunner({
       ref={canvasRef}
       className="w-full"
       style={{
-        aspectRatio: `${TARZAN_GAME.world.width} / ${TARZAN_GAME.world.height}`,
+        aspectRatio: "1 / 1",
+        maxWidth: 520,
+        margin: "0 auto",
         borderRadius: 16,
-        background: "#2b3d2a",
+        background: "linear-gradient(180deg, #7ecbff 0%, #b8e5ff 60%, #d8f0ff 100%)",
         display: "block",
         touchAction: "none",
       }}
