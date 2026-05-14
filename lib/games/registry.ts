@@ -93,6 +93,30 @@ export const GAMES: GameDefinition[] = [
     status: "live",
     route: "/play/primera-respuesta",
   },
+  {
+    key: "banderas-semaforas",
+    title: "Banderas Semáforas",
+    tagline:
+      "Identifica la letra del alfabeto semáforo antes que se acabe el tiempo. ¡60 segundos!",
+    category: "orientation",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🚩",
+    imageSrc: "/icons/orientacion-mapas.png",
+    status: "live",
+    route: "/play/banderas-semaforas",
+  },
+  {
+    key: "botiquin",
+    title: "Botiquín Express",
+    tagline:
+      "Arrastra el ítem correcto al paciente. Cada segundo cuenta para salvarlo.",
+    category: "first_aid",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🩹",
+    imageSrc: "/icons/primeros-auxilios.png",
+    status: "live",
+    route: "/play/botiquin",
+  },
 ];
 
 export function getGame(key: string) {

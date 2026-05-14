@@ -52,6 +52,8 @@ const GAMES: Game[] = [
   { id: "morse", gameKey: "morse", title: "Código Morse", sub: "Descifra el mensaje", color: "rose", emoji: "📡", time: "2 min", locked: true },
   { id: "star", gameKey: "constelaciones", title: "Mapa Estelar", sub: "Identifica constelaciones", color: "purple", emoji: "✨", time: "1 min", href: "/play/constelaciones", isNew: true },
   { id: "first", gameKey: "first-response", title: "Primera Respuesta", sub: "Actúa rápido en cada emergencia", color: "rose", emoji: "⛑️", time: "1 min", imageSrc: "/icons/primeros-auxilios.png", href: "/play/primera-respuesta", isNew: true },
+  { id: "sem", gameKey: "banderas-semaforas", title: "Banderas Semáforas", sub: "Lee el alfabeto del señalero", color: "gold", emoji: "🚩", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/banderas-semaforas", isNew: true },
+  { id: "bot", gameKey: "botiquin", title: "Botiquín Express", sub: "Arrastra el ítem al paciente", color: "rose", emoji: "🩹", time: "1 min", imageSrc: "/icons/primeros-auxilios.png", href: "/play/botiquin", isNew: true },
 ];
 
 async function getPlayedGameKeys(
