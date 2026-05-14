@@ -4,10 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GameShell } from "@/components/scout/game-shell";
+import { GameIntroCard } from "@/components/scout/game-intro-card";
+import { ScoresPanel } from "@/components/scout/scores-panel";
+import { TeamChat } from "@/components/scout/team-chat";
 import { MatchingGame } from "@/components/games/matching-game";
 import { ScoutIcon } from "@/components/scout/icon";
 import { LEY_SCOUT_ROUNDS } from "@/lib/games/matching/ley-scout";
-import { finishAttempt, startAttempt } from "@/lib/games/actions";
+import {
+  finishAttempt,
+  getGameDayStatus,
+  getGameTodayScores,
+  getMyGameHistory,
+  startAttempt,
+  type GameDayStatus,
+  type GameScoreEntry,
+  type MyGameHistoryEntry,
+} from "@/lib/games/actions";
+import { getGame } from "@/lib/games/registry";
 import type {
   AttemptKind,
   FinishAttemptResult,
@@ -21,6 +34,7 @@ const MAX_LIVES = 3;
 const ROUND_TIME_BONUS = 5;
 
 type Phase =
+  | "ready"
   | "loading"
   | "play"
   | "round-clear"
@@ -43,12 +57,16 @@ function formatTime(seconds: number): string {
 
 export default function LeyScoutPage() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("loading");
+  const [phase, setPhase] = useState<Phase>("ready");
   const [attempt, setAttempt] = useState<ActiveAttempt | null>(null);
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<FinishAttemptResult | null>(
     null,
   );
+  const [dayStatus, setDayStatus] = useState<GameDayStatus | null>(null);
+  const [todayScores, setTodayScores] = useState<GameScoreEntry[]>([]);
+  const [history, setHistory] = useState<MyGameHistoryEntry[]>([]);
+  const [starting, setStarting] = useState(false);
 
   const [roundIndex, setRoundIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -61,9 +79,11 @@ export default function LeyScoutPage() {
   const round = LEY_SCOUT_ROUNDS[roundIndex];
   const totalRounds = LEY_SCOUT_ROUNDS.length;
   const livesLeft = MAX_LIVES - livesUsed;
+  const meta = getGame(GAME_KEY);
 
   const beginAttempt = useCallback(() => {
     setPhase("loading");
+    setStarting(true);
     setRoundIndex(0);
     setScore(0);
     setLivesUsed(0);
@@ -80,6 +100,7 @@ export default function LeyScoutPage() {
         console.error(err);
         setBlockedReason("unknown_error");
         setPhase("blocked");
+        setStarting(false);
         return;
       }
 
@@ -90,6 +111,7 @@ export default function LeyScoutPage() {
         }
         setBlockedReason(result.reason);
         setPhase("blocked");
+        setStarting(false);
         return;
       }
 
@@ -99,13 +121,52 @@ export default function LeyScoutPage() {
         no: result.attemptNo,
       });
       setPhase("play");
+      setStarting(false);
     });
   }, [router]);
 
-  // Mount: open the first attempt.
+  const refreshIntroData = useCallback(async () => {
+    const [status, scores, hist] = await Promise.all([
+      getGameDayStatus(GAME_KEY),
+      getGameTodayScores(GAME_KEY, 8),
+      getMyGameHistory(GAME_KEY, 5),
+    ]);
+    return { status, scores, hist };
+  }, []);
+
+  // Mount: fetch day status + scores + history (no auto-start).
   useEffect(() => {
-    beginAttempt();
-  }, [beginAttempt]);
+    let cancelled = false;
+    refreshIntroData()
+      .then(({ status, scores, hist }) => {
+        if (cancelled) return;
+        setDayStatus(status);
+        setTodayScores(scores);
+        setHistory(hist);
+        if (!status.authenticated) {
+          router.replace(`/login?next=/play/${GAME_KEY}`);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) {
+          setDayStatus({
+            authenticated: true,
+            practiceDone: false,
+            attempt1Score: null,
+            attempt2Score: null,
+            scoringAttemptsUsed: 0,
+            scoringAttemptsRemaining: 2,
+            bestScore: 0,
+            dayTotal: 0,
+            blockedByOtherGame: null,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, refreshIntroData]);
 
   // Tick timer while playing.
   useEffect(() => {
@@ -172,6 +233,20 @@ export default function LeyScoutPage() {
   };
 
   const handleRetry = () => beginAttempt();
+  const handleBackToIntro = useCallback(() => {
+    setAttempt(null);
+    setSubmitResult(null);
+    setBlockedReason(null);
+    setPhase("ready");
+    // Refresh status + scores to reflect newly-used attempts.
+    refreshIntroData()
+      .then(({ status, scores, hist }) => {
+        setDayStatus(status);
+        setTodayScores(scores);
+        setHistory(hist);
+      })
+      .catch((err) => console.error(err));
+  }, [refreshIntroData]);
 
   const headerLevel = useMemo(() => {
     if (phase === "loading") return "Preparando…";
@@ -185,6 +260,41 @@ export default function LeyScoutPage() {
     return `Ronda ${roundIndex + 1}/${totalRounds}`;
   }, [phase, attempt, roundIndex, totalRounds]);
 
+  if (phase === "ready") {
+    return (
+      <IntroLayout>
+        {dayStatus ? (
+          <>
+            <GameIntroCard
+              title={meta?.title ?? "Ley en Orden"}
+              tagline={
+                meta?.tagline ??
+                "Conecta cada fragmento de la Ley Scout con su completación."
+              }
+              imageSrc={meta?.imageSrc}
+              emoji={meta?.emoji}
+              attemptsRemaining={dayStatus.scoringAttemptsRemaining}
+              practiceDone={dayStatus.practiceDone}
+              bestScore={dayStatus.bestScore}
+              blockedByOtherGame={dayStatus.blockedByOtherGame}
+              onStart={() => beginAttempt()}
+              starting={starting}
+            />
+            <ScoresPanel
+              gameTitle={meta?.title ?? "Ley en Orden"}
+              dayStatus={dayStatus}
+              todayScores={todayScores}
+              history={history}
+            />
+            <TeamChat gameKey={GAME_KEY} />
+          </>
+        ) : (
+          <IntroSkeleton />
+        )}
+      </IntroLayout>
+    );
+  }
+
   return (
     <GameShell
       title="LEY EN ORDEN"
@@ -195,9 +305,14 @@ export default function LeyScoutPage() {
       livesUsed={livesUsed}
       footer={
         <div className="flex items-center gap-2">
-          <Link href="/play" className="btn btn-ghost btn-sm" aria-label="Salir">
+          <button
+            type="button"
+            onClick={handleBackToIntro}
+            className="btn btn-ghost btn-sm"
+            aria-label="Salir"
+          >
             <ScoutIcon name="close" size={14} /> Salir
-          </Link>
+          </button>
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}
@@ -276,7 +391,7 @@ function Intro({
   attempt: ActiveAttempt | null;
   phase: Phase;
 }) {
-  if (phase === "blocked") return null;
+  if (phase === "blocked" || phase === "ready") return null;
   const tip =
     attempt?.kind === "practice"
       ? "Modo práctica: este intento no afecta tu puntaje semanal."
@@ -298,6 +413,105 @@ function Intro({
       <p className="t-caption text-muted" style={{ marginTop: 8 }}>
         {tip}
       </p>
+    </div>
+  );
+}
+
+function IntroLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col"
+      style={{ background: "var(--bg)" }}
+    >
+      <header
+        className="sticky top-0 z-10 flex items-center justify-between px-5 py-4"
+        style={{
+          background:
+            "linear-gradient(180deg, color-mix(in oklch, var(--bg) 96%, transparent), color-mix(in oklch, var(--bg) 80%, transparent))",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <Link
+          href="/dashboard"
+          className="btn btn-ghost btn-sm"
+          aria-label="Volver al dashboard"
+        >
+          <ScoutIcon name="arrow" size={14} />
+          Volver
+        </Link>
+        <span
+          className="t-overline"
+          style={{ letterSpacing: "0.16em", color: "var(--fg-soft)" }}
+        >
+          Minijuego del día
+        </span>
+        <span className="btn btn-ghost btn-sm btn-icon" aria-hidden>
+          <ScoutIcon name="settings" size={14} />
+        </span>
+      </header>
+      <div
+        className="vstack flex-1 px-5 pb-10 pt-2"
+        style={{ gap: 14, alignItems: "center" }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function IntroSkeleton() {
+  return (
+    <div
+      className="scout-card w-full"
+      style={{
+        maxWidth: 420,
+        padding: 0,
+        overflow: "hidden",
+        opacity: 0.7,
+      }}
+    >
+      <div
+        className="animate-pulse"
+        style={{
+          aspectRatio: "16 / 10",
+          background:
+            "linear-gradient(110deg, var(--surface) 0%, var(--card-hi) 50%, var(--surface) 100%)",
+        }}
+      />
+      <div className="vstack" style={{ padding: 20, gap: 14 }}>
+        <div
+          style={{
+            height: 22,
+            width: "60%",
+            borderRadius: 8,
+            background: "var(--card-hi)",
+          }}
+        />
+        <div
+          style={{
+            height: 14,
+            width: "85%",
+            borderRadius: 8,
+            background: "var(--card-hi)",
+          }}
+        />
+        <div
+          style={{
+            height: 48,
+            width: "100%",
+            borderRadius: 12,
+            background: "var(--card-hi)",
+          }}
+        />
+        <div
+          style={{
+            height: 40,
+            width: "100%",
+            borderRadius: 10,
+            background: "var(--card-hi)",
+          }}
+        />
+      </div>
     </div>
   );
 }
