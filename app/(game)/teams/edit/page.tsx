@@ -35,7 +35,6 @@ export default async function EditTeamPage() {
 
   const team = await getUserTeam(auth.userId!);
   if (!team) redirect("/onboarding/team");
-  if (team.owner_id !== auth.userId) redirect("/teams");
 
   return (
     <>

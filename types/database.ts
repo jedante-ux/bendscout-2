@@ -33,7 +33,7 @@ export interface Team {
 export interface TeamMember {
   team_id: string;
   user_id: string;
-  role: "owner" | "captain" | "member";
+  role: "lider" | "captain" | "member";
   joined_at: string;
 }
 

@@ -4,7 +4,7 @@ import type { Team, Profile } from "@/types/database";
 export interface TeamWithMembers extends Team {
   members: Array<
     Pick<Profile, "id" | "username" | "display_name" | "avatar_url" | "xp" | "rank">
-    & { role: "owner" | "captain" | "member"; joined_at: string }
+    & { role: "lider" | "captain" | "member"; joined_at: string }
   >;
 }
 
@@ -62,7 +62,7 @@ export async function getTeamWithMembers(
       avatar_url: profile.avatar_url,
       xp: profile.xp,
       rank: profile.rank,
-      role: (r as { role: "owner" | "captain" | "member" }).role,
+      role: (r as { role: "lider" | "captain" | "member" }).role,
       joined_at: (r as { joined_at: string }).joined_at,
     };
   });
@@ -75,7 +75,7 @@ export interface PatrolLeaderboardEntry {
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
-  role: "owner" | "captain" | "member";
+  role: "lider" | "captain" | "member";
   joinedAt: string;
   weeklyPoints: number;
   playsCount: number;
@@ -98,7 +98,7 @@ export async function getPatrolLeaderboard(
   const supabase = await createClient();
 
   type RosterRow = {
-    role: "owner" | "captain" | "member";
+    role: "lider" | "captain" | "member";
     joined_at: string;
     profiles:
       | { id: string; username: string; display_name: string | null; avatar_url: string | null; xp: number; rank: number }

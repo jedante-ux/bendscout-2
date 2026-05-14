@@ -230,7 +230,7 @@ export default async function TeamsPage() {
                             Tú
                           </span>
                         )}
-                        {m.role === "owner" && (
+                        {m.role === "lider" && (
                           <span
                             className="chip chip-accent"
                             style={{ fontSize: 9 }}

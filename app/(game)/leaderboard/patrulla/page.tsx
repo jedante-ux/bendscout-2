@@ -345,7 +345,7 @@ function RosterList({
                           "color-mix(in oklch, var(--c-gold) 40%, transparent)",
                       }}
                     >
-                      {r.role === "owner" ? "Owner" : "Capitán"}
+                      {r.role === "lider" ? "Líder" : "Capitán"}
                     </span>
                   )}
                   {r.isElectorToday && (

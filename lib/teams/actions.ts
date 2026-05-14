@@ -188,11 +188,11 @@ export async function createTeamAction(
     return { ok: false, error: error?.message ?? "No se pudo crear la patrulla." };
   }
 
-  // Add owner as team member
+  // Add creator as team leader ("lider")
   const { error: memberError } = await supabase.from("team_members").insert({
     team_id: team.id,
     user_id: userData.user.id,
-    role: "owner",
+    role: "lider",
   });
 
   if (memberError) {
@@ -302,15 +302,30 @@ export async function updateTeamAction(
   const c = colorSchema.safeParse(color);
   if (!c.success) return { ok: false, error: "Color inválido", field: "color" };
 
-  // RLS restricts to owner; we still verify upfront for a nicer error.
+  // Cualquier miembro puede editar. Verificamos pertenencia antes de tocar
+  // la fila (la RLS ya lo refuerza, pero damos un error más amigable).
   const { data: team } = await supabase
     .from("teams")
     .select("id, owner_id, avatar_url")
     .eq("id", teamId)
     .single();
 
-  if (!team || team.owner_id !== userData.user.id) {
-    return { ok: false, error: "Solo el líder puede editar la patrulla." };
+  if (!team) {
+    return { ok: false, error: "Patrulla no encontrada." };
+  }
+
+  const { data: membership } = await supabase
+    .from("team_members")
+    .select("user_id")
+    .eq("team_id", teamId)
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+
+  if (!membership) {
+    return {
+      ok: false,
+      error: "Solo los miembros de la patrulla pueden editarla.",
+    };
   }
 
   const updates: Record<string, string | null> = { name, emblem, color };
