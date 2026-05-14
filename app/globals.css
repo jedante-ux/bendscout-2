@@ -755,6 +755,11 @@ a { color: inherit; text-decoration: none; }
   from { opacity: 0.6; transform: scale(1.04); }
   to   { opacity: 1; transform: scale(1); }
 }
+@keyframes morse-pulse {
+  0%   { transform: scale(0.85); opacity: 0.6; }
+  35%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1);    opacity: 0.92; }
+}
 
 /* Reveal utilities — all start hidden (opacity: 0) and animate in once.
    Pair with `style={{ animationDelay: 'Nms' }}` for stagger. */
