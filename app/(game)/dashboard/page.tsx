@@ -12,6 +12,8 @@ import { getUserStats, getRecentSessions } from "@/lib/games/queries";
 import { getUserTeam } from "@/lib/teams/queries";
 import { getActiveMissions } from "@/lib/missions/queries";
 import { GAMES, getGame } from "@/lib/games/registry";
+import { getDailyPick } from "@/lib/games/daily";
+import { DailyRoulette } from "@/components/scout/daily-roulette";
 import { getUserInsignias, countUnlocked } from "@/lib/insignias/queries";
 
 function formatRelative(iso: string) {
@@ -47,6 +49,7 @@ export default async function DashboardPage() {
   const team = auth.authenticated && auth.userId
     ? await getUserTeam(auth.userId)
     : null;
+  const dailyPick = team ? await getDailyPick(team.id) : null;
   const allMissions = auth.authenticated && auth.userId
     ? await getActiveMissions(auth.userId)
     : null;
@@ -74,17 +77,23 @@ export default async function DashboardPage() {
 
   const liveGames = GAMES.filter((g) => g.status === "live" && g.route);
   const dayIndex = Math.floor(Date.now() / 86_400_000);
+  const fallbackDaily =
+    liveGames.length > 0 ? liveGames[dayIndex % liveGames.length] : GAMES[0];
   const dailyGame =
-    liveGames.length > 0
-      ? liveGames[dayIndex % liveGames.length]
-      : GAMES[0];
+    (dailyPick ? getGame(dailyPick.gameKey) : null) ?? fallbackDaily;
   const dailyHref = dailyGame.route ?? "/play";
   const dailyXp = 150;
+  const showRoulette = !!team && !dailyPick;
 
   return (
     <>
       <Topbar auth={auth} notifications={3} />
 
+      {showRoulette && team ? (
+        <div className="mb-5">
+          <DailyRoulette teamId={team.id} games={GAMES} />
+        </div>
+      ) : (
       <section
         className="scout-card-glow relative mb-5 overflow-hidden"
         style={{ padding: 0 }}
@@ -117,9 +126,30 @@ export default async function DashboardPage() {
                 <ScoutIcon name="flame" size={14} stroke={2.2} />
                 Minijuego del día
               </span>
-              <span className="t-caption text-muted">
-                Se renueva en 24h
-              </span>
+              {dailyPick ? (
+                <span
+                  className="hstack t-caption"
+                  style={{
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    background:
+                      "color-mix(in oklch, var(--c-gold) 18%, transparent)",
+                    border:
+                      "1px solid color-mix(in oklch, var(--c-gold) 40%, transparent)",
+                    color: "var(--c-gold)",
+                    fontWeight: 700,
+                  }}
+                  title="Elector del día"
+                >
+                  <ScoutIcon name="starfill" size={12} stroke={2.2} />
+                  @{dailyPick.pickedByUsername}
+                </span>
+              ) : (
+                <span className="t-caption text-muted">
+                  Se renueva en 24h
+                </span>
+              )}
             </div>
 
             <div>
@@ -254,6 +284,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </section>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -512,7 +543,16 @@ export default async function DashboardPage() {
             <Link href="/teams" className="btn btn-secondary">
               Ver patrulla
             </Link>
-            <button className="btn btn-primary">Retar otra tropa</button>
+            {team ? (
+              <Link href="/leaderboard/patrulla" className="btn btn-primary">
+                <ScoutIcon name="shield" size={14} />
+                Ranking de patrulla
+              </Link>
+            ) : (
+              <Link href="/teams" className="btn btn-primary">
+                Unirse a una patrulla
+              </Link>
+            )}
           </div>
         </div>
       </section>

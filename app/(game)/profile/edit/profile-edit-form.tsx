@@ -104,9 +104,9 @@ export function ProfileEditForm({
   return (
     <form
       action={formAction}
-      encType="multipart/form-data"
       className="vstack"
       style={{ gap: 18 }}
+      encType="multipart/form-data"
     >
       {/* Avatar uploader */}
       <input

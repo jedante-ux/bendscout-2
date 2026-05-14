@@ -21,6 +21,20 @@ const timezoneSchema = z
   .max(48, "Máximo 48 caracteres")
   .optional();
 
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_AVATAR_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
 export type ProfileActionResult =
   | { ok: true }
   | {
@@ -85,6 +99,54 @@ export async function updateProfileAction(
   };
   if (timezone) updates.timezone = timezone;
 
+  // Avatar: subir nuevo archivo, quitar el actual, o no tocar.
+  const removeAvatar = String(formData.get("removeAvatar") ?? "0") === "1";
+  const avatarFile = formData.get("avatarFile");
+  const hasNewAvatar =
+    avatarFile instanceof File && avatarFile.size > 0;
+
+  if (hasNewAvatar) {
+    const file = avatarFile as File;
+    if (!ACCEPTED_AVATAR_MIMES.has(file.type)) {
+      return {
+        ok: false,
+        error: "Formato no soportado. Usa JPG, PNG, WEBP o GIF.",
+        field: "avatarFile",
+      };
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      return {
+        ok: false,
+        error: "La imagen pesa más de 5 MB.",
+        field: "avatarFile",
+      };
+    }
+
+    const ext = MIME_TO_EXT[file.type] ?? "jpg";
+    const path = `${userData.user.id}/avatar-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      return {
+        ok: false,
+        error: `No pudimos subir la foto: ${uploadError.message}`,
+        field: "avatarFile",
+      };
+    }
+
+    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+    updates.avatar_url = pub.publicUrl;
+  } else if (removeAvatar) {
+    updates.avatar_url = null;
+  }
+
   const { error } = await supabase
     .from("profiles")
     .update(updates)
@@ -94,7 +156,27 @@ export async function updateProfileAction(
     return { ok: false, error: error.message };
   }
 
+  // Best-effort: limpiar archivos viejos del usuario en el bucket si reemplazó
+  // o quitó la foto. No bloqueamos si falla.
+  if (hasNewAvatar || removeAvatar) {
+    const { data: existing } = await supabase.storage
+      .from("avatars")
+      .list(userData.user.id);
+    if (existing && existing.length > 0) {
+      const keepName = hasNewAvatar
+        ? (updates.avatar_url ?? "").split("/").pop()
+        : null;
+      const toRemove = existing
+        .map((f) => `${userData.user.id}/${f.name}`)
+        .filter((p) => p.split("/").pop() !== keepName);
+      if (toRemove.length > 0) {
+        await supabase.storage.from("avatars").remove(toRemove);
+      }
+    }
+  }
+
   revalidatePath("/profile");
+  revalidatePath("/profile/edit");
   revalidatePath("/dashboard");
   revalidatePath("/teams");
   revalidatePath("/", "layout");

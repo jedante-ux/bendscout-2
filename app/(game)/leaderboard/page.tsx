@@ -82,6 +82,15 @@ export default async function LeaderboardPage({
           >
             <ScoutIcon name="user" size={16} /> Individual
           </Link>
+          {myTeam && (
+            <Link
+              href="/leaderboard/patrulla"
+              className="btn btn-ghost"
+              title={`Ranking interno de ${myTeam.name}`}
+            >
+              <ScoutIcon name="shield" size={16} /> Mi patrulla
+            </Link>
+          )}
           <div style={{ flex: 1 }} />
           <span className="chip chip-accent">
             <ScoutIcon name="flame" size={12} /> Esta semana

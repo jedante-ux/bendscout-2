@@ -70,6 +70,106 @@ export async function getTeamWithMembers(
   return { ...(team as Team), members };
 }
 
+export interface PatrolLeaderboardEntry {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: "owner" | "captain" | "member";
+  joinedAt: string;
+  weeklyPoints: number;
+  playsCount: number;
+  lastPlayedAt: string | null;
+  xp: number;
+  level: number;
+  isElectorToday: boolean;
+  rankPosition: number;
+}
+
+/**
+ * Leaderboard privado de una patrulla: ranking de SUS miembros (no entre patrullas).
+ * Incluye miembros con 0 puntos (que no han jugado esta semana) al final.
+ */
+export async function getPatrolLeaderboard(
+  teamId: string,
+  jamboreeId: string | null,
+  todayElectorId: string | null = null,
+): Promise<PatrolLeaderboardEntry[]> {
+  const supabase = await createClient();
+
+  type RosterRow = {
+    role: "owner" | "captain" | "member";
+    joined_at: string;
+    profiles:
+      | { id: string; username: string; display_name: string | null; avatar_url: string | null; xp: number; rank: number }
+      | { id: string; username: string; display_name: string | null; avatar_url: string | null; xp: number; rank: number }[];
+  };
+
+  const { data: roster } = await supabase
+    .from("team_members")
+    .select(
+      `role, joined_at, profiles!inner ( id, username, display_name, avatar_url, xp, rank )`,
+    )
+    .eq("team_id", teamId)
+    .returns<RosterRow[]>();
+
+  const memberRows = (roster ?? []).map((r) => {
+    const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+    return {
+      userId: p.id,
+      username: p.username,
+      displayName: p.display_name,
+      avatarUrl: p.avatar_url,
+      role: r.role,
+      joinedAt: r.joined_at,
+      xp: p.xp,
+      level: p.rank,
+    };
+  });
+
+  // Map userId -> jamboree_scores row (si existe).
+  const scoresMap = new Map<
+    string,
+    { total_points: number; plays_count: number; last_played_at: string | null }
+  >();
+
+  if (jamboreeId && memberRows.length > 0) {
+    const { data: scores } = await supabase
+      .from("jamboree_scores")
+      .select("user_id, total_points, plays_count, last_played_at")
+      .eq("jamboree_id", jamboreeId)
+      .in(
+        "user_id",
+        memberRows.map((m) => m.userId),
+      );
+
+    for (const s of scores ?? []) {
+      scoresMap.set((s as { user_id: string }).user_id, {
+        total_points: (s as { total_points: number }).total_points,
+        plays_count: (s as { plays_count: number }).plays_count,
+        last_played_at:
+          ((s as { last_played_at: string | null }).last_played_at) ?? null,
+      });
+    }
+  }
+
+  const merged = memberRows.map((m) => ({
+    ...m,
+    weeklyPoints: scoresMap.get(m.userId)?.total_points ?? 0,
+    playsCount: scoresMap.get(m.userId)?.plays_count ?? 0,
+    lastPlayedAt: scoresMap.get(m.userId)?.last_played_at ?? null,
+    isElectorToday: !!todayElectorId && todayElectorId === m.userId,
+  }));
+
+  merged.sort((a, b) => {
+    if (b.weeklyPoints !== a.weeklyPoints) return b.weeklyPoints - a.weeklyPoints;
+    if (b.xp !== a.xp) return b.xp - a.xp;
+    return a.username.localeCompare(b.username);
+  });
+
+  return merged.map((m, i) => ({ ...m, rankPosition: i + 1 }));
+}
+
 export interface TeamSummary extends Team {
   memberCount: number;
 }
