@@ -36,7 +36,6 @@ import type {
 } from "@/types/database";
 
 const GAME_KEY = "construye-carpa";
-const ROUND_SECONDS = 60;
 
 type Phase =
   | "ready"
@@ -52,12 +51,6 @@ interface ActiveAttempt {
   no: 1 | 2;
 }
 
-function formatTime(seconds: number): string {
-  const s = Math.max(0, seconds);
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r.toString().padStart(2, "0")}`;
-}
 
 export default function ConstruyeCarpaPage() {
   return (
@@ -91,8 +84,6 @@ function ConstruyeCarpaPageInner() {
   const [hits, setHits] = useState(0);
   const [misses, setMisses] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
-  const [paused, setPaused] = useState(false);
   const [started, setStarted] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
 
@@ -113,8 +104,6 @@ function ConstruyeCarpaPageInner() {
     setHits(0);
     setMisses(0);
     setMaxStreak(0);
-    setTimeLeft(ROUND_SECONDS);
-    setPaused(false);
     setStarted(false);
     setAttemptCount((c) => c + 1);
     setSubmitResult(null);
@@ -237,30 +226,11 @@ function ConstruyeCarpaPageInner() {
   );
 
   const endedRef = useRef(false);
-  const handleTimeout = useCallback(() => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-    submitScore(scoreRef.current);
-  }, [submitScore]);
 
   useEffect(() => {
     if (phase !== "play") return;
     endedRef.current = false;
   }, [phase, attemptCount]);
-
-  useEffect(() => {
-    if (phase !== "play" || paused || !started) return;
-    const id = window.setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          window.clearInterval(id);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [phase, paused, started]);
 
   const handleCorrect = (delta: number, streak: number) => {
     setScore((s) => {
@@ -272,14 +242,14 @@ function ConstruyeCarpaPageInner() {
     setMaxStreak((m) => Math.max(m, streak));
   };
 
-  const handleWrong = () => {
-    setScore((s) => {
-      const next = Math.max(0, s - 30);
-      scoreRef.current = next;
-      return next;
-    });
+  // Una equivocación termina la partida: registramos la falla y enviamos
+  // el score actual. Sin timer: la única forma de terminar es errando.
+  const handleWrong = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
     setMisses((m) => m + 1);
-  };
+    submitScore(scoreRef.current);
+  }, [submitScore]);
 
   const handleRetry = () => beginAttempt();
   const handleBackToIntro = useCallback(() => {
@@ -348,9 +318,9 @@ function ConstruyeCarpaPageInner() {
     <GameShell
       title="CONSTRUYE LA CARPA"
       level={headerLevel}
-      time={formatTime(timeLeft)}
+      time={`${hits} ${hits === 1 ? "acierto" : "aciertos"}`}
       points={score}
-      lives={0}
+      lives={1}
       footer={
         <div className="flex items-center gap-2">
           <button
@@ -360,15 +330,6 @@ function ConstruyeCarpaPageInner() {
             aria-label="Salir"
           >
             <ScoutIcon name="close" size={14} /> Salir
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaused((p) => !p)}
-            className="btn btn-secondary btn-sm"
-            disabled={phase !== "play"}
-          >
-            <ScoutIcon name={paused ? "play" : "pause"} size={14} />
-            {paused ? "Reanudar" : "Pausar"}
           </button>
         </div>
       }
@@ -380,16 +341,14 @@ function ConstruyeCarpaPageInner() {
           <>
             <ConstruyeCarpaGame
               key={attemptCount}
-              interactive={started && !paused && timeLeft > 0}
-              timeLeftSeconds={timeLeft}
+              interactive={started}
               onCorrect={handleCorrect}
               onWrong={handleWrong}
-              onTimeout={handleTimeout}
             />
             {!started && (
               <GameStartOverlay
                 onStart={() => setStarted(true)}
-                hint="Arrastra la pieza #1 primero — sigue el orden"
+                hint="Arrastra la pieza #1 primero — un error termina la partida"
               />
             )}
           </>
@@ -412,10 +371,6 @@ function ConstruyeCarpaPageInner() {
         )}
 
         {phase === "blocked" && <BlockedOverlay reason={blockedReason} />}
-
-        {paused && phase === "play" && (
-          <PausedOverlay onResume={() => setPaused(false)} />
-        )}
       </div>
     </GameShell>
   );
@@ -720,26 +675,6 @@ function BlockedOverlay({ reason }: { reason: string | null }) {
           Ver otros minijuegos
           <ScoutIcon name="arrow" size={14} />
         </Link>
-      </div>
-    </Overlay>
-  );
-}
-
-function PausedOverlay({ onResume }: { onResume: () => void }) {
-  return (
-    <Overlay>
-      <div className="text-center">
-        <ScoutIcon name="pause" size={36} className="mx-auto" />
-        <h3 className="t-display-md" style={{ marginTop: 10 }}>
-          En pausa
-        </h3>
-        <button
-          onClick={onResume}
-          className="btn btn-primary btn-lg"
-          style={{ marginTop: 14, width: "100%" }}
-        >
-          <ScoutIcon name="play" size={14} /> Reanudar
-        </button>
       </div>
     </Overlay>
   );

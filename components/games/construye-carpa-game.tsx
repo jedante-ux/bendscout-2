@@ -18,8 +18,12 @@ export interface ConstruyeCarpaGameProps {
   interactive: boolean;
   onCorrect?: (delta: number, streak: number) => void;
   onWrong?: () => void;
+  /**
+   * Compat: si el caller aún pasa timeLeftSeconds y este llega a 0 disparamos
+   * onTimeout. Sin timer no se usa.
+   */
   onTimeout?: () => void;
-  timeLeftSeconds: number;
+  timeLeftSeconds?: number;
 }
 
 interface Round {
@@ -203,6 +207,7 @@ export function ConstruyeCarpaGame({
   }, [drag, onPointerMove, onPointerUp]);
 
   useEffect(() => {
+    if (timeLeftSeconds === undefined) return;
     if (timeLeftSeconds <= 0) onTimeout?.();
   }, [timeLeftSeconds, onTimeout]);
 
