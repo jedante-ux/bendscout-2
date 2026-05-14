@@ -114,6 +114,8 @@ export default async function PatrolLeaderboardPage() {
                   letter={team.emblem ?? team.name.charAt(0).toUpperCase()}
                   color={colorOf(team.color)}
                   size={72}
+                  imageSrc={team.avatar_url}
+                  imageAlt={team.name}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="t-overline text-muted">Tu patrulla</div>

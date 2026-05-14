@@ -16,26 +16,37 @@ type BadgeColor =
   | "sky"
   | "teal";
 
-interface RankStep {
-  label: string;
+interface RankTier {
+  name: string;
+  level: number;
   color: BadgeColor;
-  done: boolean;
-  active?: boolean;
 }
 
-const RANKS: RankStep[] = [
-  { label: "Lobato", color: "mint", done: true },
-  { label: "Scout", color: "sky", done: true },
-  { label: "Explorador", color: "purple", done: true, active: true },
-  { label: "Pionero", color: "gold", done: false },
-  { label: "Rover", color: "rose", done: false },
+/**
+ * Tiers de rango por nivel mínimo. El nivel viene del trigger
+ * `sync_profile_xp_from_jamboree` que actualiza `profiles.rank` con
+ * `level_for_xp(xp)`. Cada tier abarca un rango de niveles del DB.
+ */
+const RANK_TIERS: RankTier[] = [
+  { name: "Lobato", level: 1, color: "mint" },
+  { name: "Scout", level: 3, color: "sky" },
+  { name: "Explorador", level: 6, color: "purple" },
+  { name: "Pionero", level: 10, color: "gold" },
+  { name: "Rover", level: 15, color: "rose" },
 ];
 
-const REQS = [
-  { title: "Completar 5 misiones", value: 3, max: 5 },
-  { title: "Ganar 3 insignias raras", value: 2, max: 3 },
-  { title: "Liderar la patrulla 1 sem.", value: 4, max: 7 },
-];
+/** Mirror de `public.xp_for_level(N) = 250 * (N-1) * N / 2`. */
+function xpForLevel(n: number): number {
+  return Math.max(0, Math.floor((250 * (n - 1) * n) / 2));
+}
+
+function currentRankIndex(level: number): number {
+  let idx = 0;
+  for (let i = 0; i < RANK_TIERS.length; i++) {
+    if (RANK_TIERS[i].level <= level) idx = i;
+  }
+  return idx;
+}
 
 const WEEK = [
   { d: "L", v: 30 },
@@ -73,6 +84,41 @@ export default async function ProfilePage() {
   const xpInto = stats?.xpIntoLevel ?? 0;
   const xpStep = (stats?.xpIntoLevel ?? 0) + (stats?.xpToNext ?? 250);
   const streak = stats?.streakDays ?? 0;
+
+  // ---- Rank progression (data real) ----
+  const curIdx = currentRankIndex(level);
+  const currentRank = RANK_TIERS[curIdx];
+  const nextRank = RANK_TIERS[curIdx + 1] ?? null;
+  const rankFloorXp = xpForLevel(currentRank.level);
+  const rankCapXp = nextRank ? xpForLevel(nextRank.level) : rankFloorXp;
+  const rankXpInto = Math.max(0, xp - rankFloorXp);
+  const rankXpSpan = Math.max(1, rankCapXp - rankFloorXp);
+  const rankXpToNext = nextRank ? Math.max(0, rankCapXp - xp) : 0;
+  const rankIsMax = !nextRank;
+
+  // 3 requisitos reales para subir al siguiente rango
+  const requirements = nextRank
+    ? [
+        {
+          title: `Alcanza nivel ${nextRank.level}`,
+          value: Math.min(level, nextRank.level) - currentRank.level,
+          max: nextRank.level - currentRank.level,
+          suffix: `${level} / ${nextRank.level}`,
+        },
+        {
+          title: `Acumula ${rankCapXp.toLocaleString("es")} XP`,
+          value: Math.min(xp, rankCapXp) - rankFloorXp,
+          max: rankCapXp - rankFloorXp,
+          suffix: `${xp.toLocaleString("es")} / ${rankCapXp.toLocaleString("es")}`,
+        },
+        {
+          title: `Desbloquea ${insigniasTotal} insignias`,
+          value: insigniasUnlocked,
+          max: insigniasTotal,
+          suffix: `${insigniasUnlocked} / ${insigniasTotal}`,
+        },
+      ]
+    : [];
 
   return (
     <>
@@ -115,7 +161,16 @@ export default async function ProfilePage() {
               <Avatar name={displayName} size={96} ring />
             )}
             <div>
-              <span className="rank-tag">Rango · Explorador</span>
+              <span
+                className="rank-tag"
+                style={{
+                  color: `var(--c-${currentRank.color})`,
+                  background: `color-mix(in oklch, var(--c-${currentRank.color}) 14%, transparent)`,
+                  borderColor: `color-mix(in oklch, var(--c-${currentRank.color}) 30%, transparent)`,
+                }}
+              >
+                Rango · {currentRank.name}
+              </span>
               <div className="t-display-lg" style={{ margin: "8px 0 2px" }}>
                 {displayName}
               </div>
@@ -167,67 +222,127 @@ export default async function ProfilePage() {
           <div className="scout-card" style={{ padding: 18 }}>
             <div className="between" style={{ marginBottom: 12 }}>
               <span className="t-h3">Camino al siguiente rango</span>
-              <span
-                className="rank-tag"
-                style={{
-                  color: "var(--c-purple)",
-                  background:
-                    "color-mix(in oklch, var(--c-purple) 16%, transparent)",
-                  borderColor:
-                    "color-mix(in oklch, var(--c-purple) 30%, transparent)",
-                }}
-              >
-                Próximo · Pionero
-              </span>
+              {nextRank ? (
+                <span
+                  className="rank-tag"
+                  style={{
+                    color: `var(--c-${nextRank.color})`,
+                    background: `color-mix(in oklch, var(--c-${nextRank.color}) 16%, transparent)`,
+                    borderColor: `color-mix(in oklch, var(--c-${nextRank.color}) 30%, transparent)`,
+                  }}
+                >
+                  Próximo · {nextRank.name}
+                </span>
+              ) : (
+                <span
+                  className="rank-tag"
+                  style={{
+                    color: "var(--c-gold)",
+                    background:
+                      "color-mix(in oklch, var(--c-gold) 16%, transparent)",
+                    borderColor:
+                      "color-mix(in oklch, var(--c-gold) 30%, transparent)",
+                  }}
+                >
+                  Rango máximo
+                </span>
+              )}
             </div>
 
-            <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
-              {RANKS.map((r, i) => (
+            <div
+              className="flex items-center gap-3"
+              style={{ marginBottom: 14 }}
+            >
+              {RANK_TIERS.map((tier, i) => (
                 <RankStepNode
-                  key={r.label}
-                  rank={r}
+                  key={tier.name}
+                  rank={{
+                    label: tier.name,
+                    color: tier.color,
+                    done: i <= curIdx,
+                    active: i === curIdx,
+                  }}
                   showConnector={i > 0}
-                  connectorDone={r.done}
+                  connectorDone={i <= curIdx}
                 />
               ))}
             </div>
 
             <div className="between" style={{ marginBottom: 4 }}>
-              <span className="t-caption text-muted">1 750 XP para Pionero</span>
-              <span className="t-mono">4 250 / 6 000</span>
+              <span className="t-caption text-muted">
+                {rankIsMax
+                  ? "Has alcanzado el rango más alto"
+                  : `${rankXpToNext.toLocaleString("es")} XP para ${nextRank!.name}`}
+              </span>
+              <span className="t-mono">
+                {rankIsMax
+                  ? `${xp.toLocaleString("es")} XP`
+                  : `${rankXpInto.toLocaleString("es")} / ${rankXpSpan.toLocaleString("es")}`}
+              </span>
             </div>
-            <XpBar value={4250} max={6000} />
+            <XpBar
+              value={rankIsMax ? rankXpSpan : rankXpInto}
+              max={rankXpSpan}
+            />
 
-            <div
-              className="grid"
-              style={{
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 10,
-                marginTop: 18,
-              }}
-            >
-              {REQS.map((r, i) => (
-                <div
-                  key={r.title}
-                  style={{
-                    padding: 12,
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--r-lg)",
-                  }}
-                >
-                  <div className="t-overline text-muted">Requisito {i + 1}</div>
-                  <div
-                    style={{ fontWeight: 700, fontSize: 13, marginTop: 4 }}
-                  >
-                    {r.title}
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <XpBar value={r.value} max={r.max} />
-                  </div>
-                </div>
-              ))}
-            </div>
+            {requirements.length > 0 ? (
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 10,
+                  marginTop: 18,
+                }}
+              >
+                {requirements.map((r, i) => {
+                  const done = r.value >= r.max;
+                  return (
+                    <div
+                      key={r.title}
+                      style={{
+                        padding: 12,
+                        background: "var(--surface)",
+                        border: done
+                          ? "1px solid color-mix(in oklch, var(--primary) 40%, transparent)"
+                          : "1px solid var(--border)",
+                        borderRadius: "var(--r-lg)",
+                      }}
+                    >
+                      <div
+                        className="between"
+                        style={{ alignItems: "center" }}
+                      >
+                        <div className="t-overline text-muted">
+                          Requisito {i + 1}
+                        </div>
+                        {done ? (
+                          <ScoutIcon
+                            name="check"
+                            size={12}
+                            stroke={2.4}
+                            className="text-primary-token"
+                          />
+                        ) : null}
+                      </div>
+                      <div
+                        style={{ fontWeight: 700, fontSize: 13, marginTop: 4 }}
+                      >
+                        {r.title}
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        <XpBar value={Math.min(r.value, r.max)} max={r.max} />
+                      </div>
+                      <div
+                        className="t-caption text-muted"
+                        style={{ marginTop: 6 }}
+                      >
+                        {r.suffix}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           <div className="scout-card" style={{ padding: 18 }}>
@@ -393,7 +508,7 @@ function RankStepNode({
   showConnector,
   connectorDone,
 }: {
-  rank: RankStep;
+  rank: { label: string; color: BadgeColor; done: boolean; active?: boolean };
   showConnector: boolean;
   connectorDone: boolean;
 }) {

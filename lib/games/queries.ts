@@ -136,6 +136,7 @@ export interface TeamLeaderboardEntry {
   slug: string;
   color: string | null;
   emblem: string | null;
+  avatar_url: string | null;
   total_points: number;
   members_active: number;
   rank_position: number;
@@ -154,15 +155,23 @@ export async function getTeamLeaderboard(
       team_id,
       total_points,
       members_active,
-      teams!inner ( name, slug, color, emblem )
+      teams!inner ( name, slug, color, emblem, avatar_url )
     `,
     )
     .eq("jamboree_id", jamboreeId)
     .order("total_points", { ascending: false })
     .limit(limit);
 
+  type TeamShape = {
+    name: string;
+    slug: string;
+    color: string | null;
+    emblem: string | null;
+    avatar_url: string | null;
+  };
+
   return (data ?? []).map((row, i) => {
-    const team = (row as { teams: { name: string; slug: string; color: string | null; emblem: string | null } | { name: string; slug: string; color: string | null; emblem: string | null }[] }).teams;
+    const team = (row as { teams: TeamShape | TeamShape[] }).teams;
     const t = Array.isArray(team) ? team[0] : team;
     return {
       team_id: (row as { team_id: string }).team_id,
@@ -170,6 +179,7 @@ export async function getTeamLeaderboard(
       slug: t.slug,
       color: t.color,
       emblem: t.emblem,
+      avatar_url: t.avatar_url,
       total_points: (row as { total_points: number }).total_points,
       members_active: (row as { members_active: number }).members_active,
       rank_position: i + 1,

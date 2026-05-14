@@ -1,9 +1,15 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Topbar } from "@/components/scout/topbar";
-import { FeaturedGame } from "@/components/scout/featured-game";
 import { ScoutIcon, type ScoutIconName } from "@/components/scout/icon";
 import { cn } from "@/lib/utils";
+import { getAuthState } from "@/lib/auth/session";
+import { getActiveJamboree } from "@/lib/games/queries";
+import { createClient } from "@/lib/supabase/server";
+import { getUserTeam } from "@/lib/teams/queries";
+import { getDailyPick } from "@/lib/games/daily";
+import { GAMES as REGISTRY_GAMES } from "@/lib/games/registry";
+import { DailyPickWidget } from "@/components/scout/daily-pick-widget";
 
 type GameColor =
   | "mint"
@@ -16,10 +22,10 @@ type GameColor =
 
 interface Game {
   id: string;
+  /** game_key tal como se guarda en `game_sessions` / `daily_plays`. */
+  gameKey: string;
   title: string;
   sub: string;
-  best: number;
-  plays: number;
   color: GameColor;
   emoji: string;
   time: string;
@@ -29,101 +35,156 @@ interface Game {
   href?: string;
 }
 
+/**
+ * Catálogo maestro. Las claves `gameKey` deben coincidir con las que las
+ * páginas individuales pasan a `start_attempt` para que el filtro de
+ * "jugados en la temporada" funcione.
+ */
 const GAMES: Game[] = [
-  { id: "mem", title: "Memoria Visual", sub: "Encuentra las parejas", best: 2150, plays: 18, color: "mint", emoji: "🍃", time: "1 min", href: "/play/memoria" },
-  { id: "lab", title: "Laberinto", sub: "Encuentra la salida", best: 1820, plays: 12, color: "sky", emoji: "🧭", time: "2 min", href: "/play/laberinto" },
-  { id: "cam", title: "Camino Seguro", sub: "Cruza el río saltando", best: 1560, plays: 9, color: "purple", emoji: "🏃", time: "1 min", href: "/play/camino-seguro" },
-  { id: "qz", title: "Preguntas Scout", sub: "Pon a prueba lo que sabes", best: 1750, plays: 24, color: "gold", emoji: "📖", time: "2 min", href: "/play/preguntas" },
-  { id: "ley", title: "Ley en Orden", sub: "Conecta cada artículo", best: 0, plays: 0, color: "mint", emoji: "📜", time: "2 min", imageSrc: "/icons/fogata.png", href: "/play/ley-scout", isNew: true },
-  { id: "knot", title: "Maestro Nudos", sub: "Identifica el nudo correcto", best: 980, plays: 6, color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", isNew: true },
-  { id: "morse", title: "Código Morse", sub: "Descifra el mensaje", best: 0, plays: 0, color: "rose", emoji: "📡", time: "2 min", locked: true },
-  { id: "star", title: "Mapa Estelar", sub: "Conecta las constelaciones", best: 0, plays: 0, color: "purple", emoji: "✨", time: "3 min", locked: true },
-  { id: "first", title: "Primeros Aux.", sub: "Actúa rápido y bien", best: 0, plays: 0, color: "teal", emoji: "🚑", time: "2 min", locked: true },
+  { id: "mem", gameKey: "memoria-visual", title: "Memoria Visual", sub: "Encuentra las parejas", color: "mint", emoji: "🍃", time: "1 min", href: "/play/memoria" },
+  { id: "lab", gameKey: "laberinto", title: "Laberinto", sub: "Encuentra la salida", color: "sky", emoji: "🧭", time: "2 min", href: "/play/laberinto" },
+  { id: "cam", gameKey: "camino-seguro", title: "Camino Seguro", sub: "Cruza el río saltando", color: "purple", emoji: "🏃", time: "1 min", href: "/play/camino-seguro" },
+  { id: "qz", gameKey: "preguntas", title: "Preguntas Scout", sub: "Pon a prueba lo que sabes", color: "gold", emoji: "📖", time: "2 min", href: "/play/preguntas" },
+  { id: "ley", gameKey: "ley-scout", title: "Ley en Orden", sub: "Conecta cada artículo", color: "mint", emoji: "📜", time: "2 min", imageSrc: "/icons/fogata.png", href: "/play/ley-scout", isNew: true },
+  { id: "tar", gameKey: "tarzan", title: "Pista de Tarzán", sub: "Salta y agáchate sin parar", color: "teal", emoji: "🌴", time: "1 min", href: "/play/tarzan", isNew: true },
+  { id: "knot", gameKey: "knot-rush", title: "Maestro Nudos", sub: "Identifica el nudo correcto", color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", isNew: true },
+  { id: "morse", gameKey: "morse", title: "Código Morse", sub: "Descifra el mensaje", color: "rose", emoji: "📡", time: "2 min", locked: true },
+  { id: "star", gameKey: "star-map", title: "Mapa Estelar", sub: "Conecta las constelaciones", color: "purple", emoji: "✨", time: "3 min", locked: true },
+  { id: "first", gameKey: "first-response", title: "Primeros Aux.", sub: "Actúa rápido y bien", color: "teal", emoji: "🚑", time: "2 min", locked: true },
 ];
 
-export default function PlayPage() {
+async function getPlayedGameKeys(
+  userId: string,
+  jamboreeId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("game_sessions")
+    .select("game_key")
+    .eq("user_id", userId)
+    .eq("jamboree_id", jamboreeId)
+    .eq("status", "completed");
+  if (!data) return new Set();
+  return new Set(data.map((r) => (r as { game_key: string }).game_key));
+}
+
+export default async function PlayPage() {
+  const auth = await getAuthState();
+  const jamboree = await getActiveJamboree();
+  const team =
+    auth.authenticated && auth.userId ? await getUserTeam(auth.userId) : null;
+  const dailyPick = team ? await getDailyPick(team.id) : null;
+
+  const playedKeys =
+    auth.authenticated && auth.userId && jamboree
+      ? await getPlayedGameKeys(auth.userId, jamboree.id)
+      : new Set<string>();
+
+  const dailyKey = dailyPick?.gameKey ?? "";
+
+  const visibleGames = GAMES.filter(
+    (g) => playedKeys.has(g.gameKey) || g.gameKey === dailyKey,
+  );
+
+  const historyGames = visibleGames.filter((g) => g.gameKey !== dailyKey);
+
   return (
     <>
       <Topbar
         greeting="Minijuegos"
-        subtitle="8 retos · gana XP, sube de rango"
+        subtitle={
+          playedKeys.size > 0
+            ? `${playedKeys.size} ${
+                playedKeys.size === 1 ? "jugado" : "jugados"
+              } esta temporada`
+            : "Empieza por el minijuego del día"
+        }
         notifications={3}
       />
 
       <div className="vstack" style={{ gap: 20 }}>
-        {/* Category tabs */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button className="btn btn-secondary">Todos</button>
-          <button className="btn btn-ghost">Velocidad</button>
-          <button className="btn btn-ghost">Memoria</button>
-          <button className="btn btn-ghost">Conocimiento</button>
-          <button className="btn btn-ghost">Habilidad</button>
-          <div style={{ flex: 1 }} />
-          <span className="chip chip-accent">
-            <ScoutIcon name="flame" size={12} /> Racha 12 días
-          </span>
-        </div>
+        <DailyPickWidget
+          games={REGISTRY_GAMES}
+          teamId={team?.id ?? null}
+          pick={dailyPick}
+          variant="hero"
+        />
 
-        {/* Featured */}
-        <section
-          className="scout-card grid items-center"
-          style={{
-            padding: 24,
-            position: "relative",
-            overflow: "hidden",
-            gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
-            gap: 24,
-          }}
-        >
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(ellipse 60% 80% at 70% 50%, color-mix(in oklch, var(--primary) 22%, transparent), transparent 60%)",
-            }}
-          />
-          <div style={{ position: "relative" }}>
-            <span className="chip">★ Destacado de la semana</span>
-            <div className="t-display-lg" style={{ margin: "10px 0 6px" }}>
-              Desafío de Senderos
-            </div>
-            <p
-              className="t-body text-muted"
-              style={{ marginBottom: 18, maxWidth: 420 }}
-            >
-              Recorre el bosque saltando entre troncos, esquiva obstáculos y
-              recolecta hojas. Quien llegue más lejos gana doble XP para su
-              patrulla.
-            </p>
-            <div className="flex flex-wrap" style={{ gap: 18, marginBottom: 18 }}>
-              <Stat label="Tu mejor" value="2 450" color="var(--accent)" />
-              <Stat label="Patrulla" value="3 120" />
-              <Stat label="XP por victoria" value="+200" color="var(--primary)" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/play/camino-seguro" className="btn btn-primary btn-lg">
-                <ScoutIcon name="play" size={16} /> Jugar ahora
-              </Link>
-              <button className="btn btn-secondary">Ver récords</button>
-            </div>
+        <section>
+          <div className="between" style={{ marginBottom: 12 }}>
+            <span className="t-h3">Tu temporada</span>
+            <span className="t-caption text-muted">
+              {historyGames.length === 0
+                ? "Sin partidas todavía"
+                : `${historyGames.length} ${
+                    historyGames.length === 1 ? "juego" : "juegos"
+                  }`}
+            </span>
           </div>
-          <FeaturedGame
-            title=""
-            tagline=""
-            imageSrc="/icons/fogata.png"
-          />
+
+          {historyGames.length === 0 ? (
+            <EmptyHistory />
+          ) : (
+            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+              {historyGames.map((g) => (
+                <GameTile key={g.id} game={g} />
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* Grid */}
-        <section className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-          {GAMES.map((g) => (
-            <GameTile key={g.id} game={g} />
-          ))}
-        </section>
+        <LockedHint />
       </div>
     </>
+  );
+}
+
+function EmptyHistory() {
+  return (
+    <div
+      className="vstack scout-card"
+      style={{
+        padding: 28,
+        textAlign: "center",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <span
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 999,
+          display: "grid",
+          placeItems: "center",
+          background: "color-mix(in oklch, var(--primary) 14%, transparent)",
+          color: "var(--primary)",
+          border:
+            "1px solid color-mix(in oklch, var(--primary) 30%, transparent)",
+        }}
+      >
+        <ScoutIcon name="gamepad" size={20} />
+      </span>
+      <div className="t-h3" style={{ margin: 0 }}>
+        Tu temporada está vacía
+      </div>
+      <p className="t-body-sm text-muted" style={{ maxWidth: 380 }}>
+        Empieza por el minijuego del día. Conforme juegues otros minijuegos
+        durante el Jamboree, aparecerán acá.
+      </p>
+    </div>
+  );
+}
+
+function LockedHint() {
+  return (
+    <p
+      className="t-caption text-muted"
+      style={{ textAlign: "center", marginTop: 4 }}
+    >
+      <ScoutIcon name="lock" size={12} /> Los demás minijuegos se desbloquean
+      conforme avance el Jamboree.
+    </p>
   );
 }
 
@@ -183,7 +244,7 @@ function GameTile({ game: g }: { game: Game }) {
           className="chip chip-neutral"
           style={{ position: "absolute", top: 10, left: 10 }}
         >
-          <ScoutIcon name="clock" size={10} /> {g.time}
+          <ScoutIcon name={"clock" as ScoutIconName} size={10} /> {g.time}
         </span>
       </div>
 
@@ -194,21 +255,18 @@ function GameTile({ game: g }: { game: Game }) {
         <div className="t-caption text-muted" style={{ marginTop: 2 }}>
           {g.sub}
         </div>
-        {!g.locked ? (
-          <div className="between" style={{ marginTop: 10 }}>
-            <span className="t-caption text-muted">Mejor</span>
-            <span
-              className="t-mono"
-              style={{ color: "var(--accent)", fontWeight: 700 }}
-            >
-              {g.best.toLocaleString("es")}
-            </span>
-          </div>
-        ) : (
-          <div className="t-caption text-muted" style={{ marginTop: 10 }}>
-            Nivel 28 para desbloquear
-          </div>
-        )}
+        <div
+          className="hstack t-caption"
+          style={{
+            marginTop: 10,
+            gap: 5,
+            color: "var(--primary)",
+            fontWeight: 700,
+          }}
+        >
+          <ScoutIcon name="check" size={12} stroke={2.4} />
+          Jugado esta temporada
+        </div>
       </div>
     </>
   );
@@ -242,25 +300,6 @@ function GameTile({ game: g }: { game: Game }) {
   return (
     <div className={cn(baseStyle)} style={baseInline}>
       {inner}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color?: string;
-}) {
-  return (
-    <div>
-      <div className="t-overline text-muted">{label}</div>
-      <div className="t-num" style={{ fontSize: 22, color }}>
-        {value}
-      </div>
     </div>
   );
 }

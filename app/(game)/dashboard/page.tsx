@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Topbar } from "@/components/scout/topbar";
 import { StatCard } from "@/components/scout/stat-card";
@@ -13,7 +12,7 @@ import { getUserTeam } from "@/lib/teams/queries";
 import { getActiveMissions } from "@/lib/missions/queries";
 import { GAMES, getGame } from "@/lib/games/registry";
 import { getDailyPick } from "@/lib/games/daily";
-import { DailyRoulette } from "@/components/scout/daily-roulette";
+import { DailyPickWidget } from "@/components/scout/daily-pick-widget";
 import { getUserInsignias, countUnlocked } from "@/lib/insignias/queries";
 
 function formatRelative(iso: string) {
@@ -75,216 +74,19 @@ export default async function DashboardPage() {
   const weeklyPoints = stats?.weeklyPoints ?? 0;
   const weeklyPlays = stats?.weeklyPlays ?? 0;
 
-  const liveGames = GAMES.filter((g) => g.status === "live" && g.route);
-  const dayIndex = Math.floor(Date.now() / 86_400_000);
-  const fallbackDaily =
-    liveGames.length > 0 ? liveGames[dayIndex % liveGames.length] : GAMES[0];
-  const dailyGame =
-    (dailyPick ? getGame(dailyPick.gameKey) : null) ?? fallbackDaily;
-  const dailyHref = dailyGame.route ?? "/play";
-  const dailyXp = 150;
-  const showRoulette = !!team && !dailyPick;
-
   return (
     <>
       <Topbar auth={auth} notifications={3} />
 
-      {showRoulette && team ? (
-        <div className="mb-5">
-          <DailyRoulette teamId={team.id} games={GAMES} />
-        </div>
-      ) : (
-      <section
-        className="scout-card-glow relative mb-5 overflow-hidden"
-        style={{ padding: 0 }}
-      >
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 70% 80% at 85% 30%, color-mix(in oklch, var(--primary) 22%, transparent), transparent 65%), radial-gradient(ellipse 50% 60% at 10% 90%, color-mix(in oklch, var(--accent) 18%, transparent), transparent 70%)",
-          }}
+      <div className="mb-5">
+        <DailyPickWidget
+          games={GAMES}
+          teamId={team?.id ?? null}
+          pick={dailyPick}
+          variant="hero"
         />
-        <div className="relative grid items-stretch gap-0 lg:[grid-template-columns:minmax(0,1.05fr)_minmax(0,1fr)]">
-          <div className="flex flex-col justify-center gap-4 p-6 md:p-8">
-            <div className="flex items-center gap-2">
-              <span
-                className="hstack t-overline"
-                style={{
-                  gap: 6,
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  background:
-                    "color-mix(in oklch, var(--primary) 18%, transparent)",
-                  color: "var(--primary)",
-                  border:
-                    "1px solid color-mix(in oklch, var(--primary) 35%, transparent)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                <ScoutIcon name="flame" size={14} stroke={2.2} />
-                Minijuego del día
-              </span>
-              {dailyPick ? (
-                <span
-                  className="hstack t-caption"
-                  style={{
-                    gap: 6,
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background:
-                      "color-mix(in oklch, var(--c-gold) 18%, transparent)",
-                    border:
-                      "1px solid color-mix(in oklch, var(--c-gold) 40%, transparent)",
-                    color: "var(--c-gold)",
-                    fontWeight: 700,
-                  }}
-                  title="Elector del día"
-                >
-                  <ScoutIcon name="starfill" size={12} stroke={2.2} />
-                  @{dailyPick.pickedByUsername}
-                </span>
-              ) : (
-                <span className="t-caption text-muted">
-                  Se renueva en 24h
-                </span>
-              )}
-            </div>
+      </div>
 
-            <div>
-              <h1
-                className="t-display-lg"
-                style={{ margin: 0, lineHeight: 1.05 }}
-              >
-                {dailyGame.title}
-              </h1>
-              <p
-                className="t-body text-muted"
-                style={{ marginTop: 8, maxWidth: 52 + "ch" }}
-              >
-                {dailyGame.tagline}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
-              <span
-                className="hstack t-caption"
-                style={{
-                  gap: 6,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "var(--card-hi)",
-                  border: "1px solid var(--border-hi)",
-                  fontWeight: 600,
-                  color: "var(--accent)",
-                }}
-              >
-                <ScoutIcon name="starfill" size={14} stroke={2.2} />
-                <span style={{ color: "var(--fg)" }}>+{dailyXp} XP</span>
-              </span>
-              <span
-                className="hstack t-caption"
-                style={{
-                  gap: 6,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "var(--card-hi)",
-                  border: "1px solid var(--border-hi)",
-                  fontWeight: 600,
-                  color: "var(--c-orange)",
-                }}
-              >
-                <ScoutIcon name="flame" size={14} />
-                <span style={{ color: "var(--fg)" }}>Suma a tu racha</span>
-              </span>
-              <span
-                className="hstack t-caption text-muted"
-                style={{ gap: 6 }}
-              >
-                <ScoutIcon name="clock" size={14} /> 3–5 min
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Link
-                href={dailyHref}
-                className="btn btn-primary btn-lg"
-                style={{ minWidth: 180 }}
-              >
-                <ScoutIcon name="play" size={16} stroke={2.4} />
-                Jugar ahora
-              </Link>
-              <Link href="/play" className="btn btn-secondary btn-lg">
-                Ver todos los minijuegos
-              </Link>
-            </div>
-          </div>
-
-          <Link
-            href={dailyHref}
-            aria-label={`Jugar ${dailyGame.title}`}
-            className="group relative block min-h-[220px] overflow-hidden lg:min-h-[320px]"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.30 0.05 155), oklch(0.18 0.04 155))",
-            }}
-          >
-            <div
-              aria-hidden
-              className="absolute inset-0"
-              style={{
-                backgroundImage:
-                  "radial-gradient(circle at 25% 25%, oklch(0.78 0.16 145 / 0.45), transparent 30%), radial-gradient(circle at 75% 70%, oklch(0.65 0.16 160 / 0.4), transparent 35%)",
-              }}
-            />
-            <div
-              aria-hidden
-              className="absolute inset-0"
-              style={{
-                backgroundImage:
-                  "linear-gradient(180deg, transparent 50%, oklch(0.16 0.04 155) 100%)",
-              }}
-            />
-            {dailyGame.imageSrc ? (
-              <div className="absolute inset-0 grid place-items-center">
-                <Image
-                  src={dailyGame.imageSrc}
-                  alt={dailyGame.title}
-                  width={320}
-                  height={320}
-                  className="animate-float h-[75%] w-auto object-contain drop-shadow-2xl transition-transform duration-300 group-hover:scale-105"
-                  priority
-                />
-              </div>
-            ) : (
-              <div className="absolute inset-0 grid place-items-center text-[180px] leading-none">
-                <span className="animate-float inline-block">
-                  {dailyGame.emoji}
-                </span>
-              </div>
-            )}
-            <svg
-              aria-hidden
-              className="absolute bottom-0 left-0 w-full"
-              viewBox="0 0 400 80"
-              preserveAspectRatio="none"
-              style={{ height: "26%" }}
-            >
-              <path
-                d="M0 60 L40 30 L70 50 L110 20 L150 45 L200 15 L240 40 L290 25 L340 50 L400 30 L400 80 L0 80 Z"
-                fill="oklch(0.18 0.06 155)"
-                opacity="0.9"
-              />
-              <path
-                d="M0 70 L60 45 L100 60 L140 35 L180 55 L220 30 L260 50 L320 35 L380 55 L400 50 L400 80 L0 80 Z"
-                fill="oklch(0.16 0.04 155)"
-              />
-            </svg>
-          </Link>
-        </div>
-      </section>
-      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -496,6 +298,8 @@ export default async function DashboardPage() {
               letter={team?.emblem ?? team?.name?.charAt(0).toUpperCase() ?? "?"}
               color={(team?.color as "mint" | "gold" | "rose" | "purple" | "orange" | "sky" | "teal") ?? "mint"}
               size={72}
+              imageSrc={team?.avatar_url ?? null}
+              imageAlt={team?.name}
             />
             <div className="min-w-0 flex-1">
               <div className="t-overline text-muted" style={{ marginBottom: 4 }}>

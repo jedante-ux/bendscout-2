@@ -1,61 +1,132 @@
+import Link from "next/link";
 import { Topbar } from "@/components/scout/topbar";
 import { BadgeCircle } from "@/components/scout/badge-circle";
-import { ScoutIcon, type ScoutIconName } from "@/components/scout/icon";
+import { XpBar } from "@/components/scout/xp-bar";
+import { ScoutIcon } from "@/components/scout/icon";
+import { getAuthState } from "@/lib/auth/session";
+import {
+  getUserTrophies,
+  countUnlockedTrophies,
+  type TrophyWithProgress,
+} from "@/lib/trophies/queries";
+import {
+  TROPHIES,
+  TROPHIES_TOTAL,
+  rarityOrder,
+  type TrophyRarity,
+} from "@/lib/trophies/registry";
 
-type TrophyColor =
-  | "mint"
-  | "gold"
-  | "rose"
-  | "purple"
-  | "orange"
-  | "sky"
-  | "teal";
+type FilterRarity = "todos" | "comunes" | "raros" | "epicos";
 
-type Rarity = "Común" | "Raro" | "Épico";
+const RARITY_FROM_FILTER: Record<Exclude<FilterRarity, "todos">, TrophyRarity> =
+  {
+    comunes: "Común",
+    raros: "Raro",
+    epicos: "Épico",
+  };
 
-interface Trophy {
-  title: string;
-  sub: string;
-  color: TrophyColor;
-  icon: ScoutIconName;
-  date: string;
-  rare: Rarity;
-}
-
-interface LockedTrophy {
-  title: string;
-  sub: string;
-  color: TrophyColor;
-}
-
-const RARITY_COLOR: Record<Rarity, string> = {
+const RARITY_COLOR: Record<TrophyRarity, string> = {
   Épico: "var(--c-purple)",
   Raro: "var(--c-sky)",
   Común: "var(--fg-muted)",
 };
 
-const TROPHIES: Trophy[] = [
-  { title: "Maestro de Memoria", sub: "Gana Memoria Visual nivel 5", color: "purple", icon: "starfill", date: "12 mar 2026", rare: "Raro" },
-  { title: "Veloz del Bosque", sub: "Termina Camino Seguro en <30s", color: "mint", icon: "flame", date: "08 mar 2026", rare: "Común" },
-  { title: "Sabio Scout", sub: "10 respuestas perfectas seguidas", color: "gold", icon: "lightbulb", date: "01 mar 2026", rare: "Épico" },
-  { title: "Top Patrulla", sub: "Ranking #1 una semana", color: "rose", icon: "trophy", date: "20 feb 2026", rare: "Épico" },
-  { title: "Coleccionista", sub: "10 insignias desbloqueadas", color: "sky", icon: "shield", date: "10 feb 2026", rare: "Raro" },
-  { title: "Aullido", sub: "Convocar a toda la patrulla", color: "orange", icon: "users", date: "05 feb 2026", rare: "Común" },
-];
+// Trofeos demo para visitantes sin sesión.
+const DEMO_TROPHIES: TrophyWithProgress[] = TROPHIES.map((def) => ({
+  def,
+  progress: 0,
+  target: def.target,
+  unlocked: false,
+  achievedAt: null,
+}));
 
-const LOCKED: LockedTrophy[] = [
-  { title: "Leyenda Scout", sub: "Llega a nivel 50", color: "gold" },
-  { title: "Cazador Nocturno", sub: "Juega 7 noches seguidas", color: "purple" },
-  { title: "Sin errores", sub: "100 minijuegos sin fallar", color: "mint" },
-];
+function parseFilter(value: string | undefined): FilterRarity {
+  if (value === "comunes" || value === "raros" || value === "epicos")
+    return value;
+  return "todos";
+}
 
-export default function TrophiesPage() {
+function formatAchievedDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("es", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatProgress(t: TrophyWithProgress): string {
+  // Para targets pequeños (1) mostramos la frase, no la fracción.
+  if (t.target === 1) return t.unlocked ? "Logrado" : "Pendiente";
+  return `${Math.min(t.progress, t.target).toLocaleString("es")} / ${t.target.toLocaleString("es")}`;
+}
+
+function rankFromUnlocked(unlocked: number): string {
+  if (unlocked >= 11) return "Leyenda";
+  if (unlocked >= 8) return "Pionero";
+  if (unlocked >= 5) return "Explorador";
+  if (unlocked >= 2) return "Scout";
+  return "Lobato";
+}
+
+export default async function TrophiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ rarity?: string; status?: string }>;
+}) {
+  const params = await searchParams;
+  const rarityFilter = parseFilter(params.rarity);
+  const showLocked = params.status !== "unlocked"; // default: muestra ambos
+
+  const auth = await getAuthState();
+  const trophies =
+    auth.authenticated && auth.userId
+      ? await getUserTrophies(auth.userId)
+      : DEMO_TROPHIES;
+
+  const unlockedCount = countUnlockedTrophies(trophies);
+
+  // Filtrado por rareza para el grid principal.
+  const visible =
+    rarityFilter === "todos"
+      ? trophies
+      : trophies.filter(
+          (t) => t.def.rarity === RARITY_FROM_FILTER[rarityFilter],
+        );
+
+  const unlocked = visible
+    .filter((t) => t.unlocked)
+    .sort((a, b) => {
+      // épicos primero, después por fecha desc.
+      const r = rarityOrder(a.def.rarity) - rarityOrder(b.def.rarity);
+      if (r !== 0) return r;
+      const aDate = a.achievedAt ? Date.parse(a.achievedAt) : 0;
+      const bDate = b.achievedAt ? Date.parse(b.achievedAt) : 0;
+      return bDate - aDate;
+    });
+
+  const locked = visible
+    .filter((t) => !t.unlocked)
+    .sort((a, b) => {
+      // Bloqueados ordenados por "más cerca de desbloquear" (mayor % de
+      // progreso primero), épicos al final cuando hay empates.
+      const pa = a.progress / a.target;
+      const pb = b.progress / b.target;
+      if (pa !== pb) return pb - pa;
+      return rarityOrder(b.def.rarity) - rarityOrder(a.def.rarity);
+    });
+
+  const rankName = rankFromUnlocked(unlockedCount);
+
   return (
     <>
       <Topbar
+        auth={auth}
         greeting="Trofeos"
         subtitle="Tus logros más raros y especiales"
-        notifications={3}
+        notifications={0}
       />
 
       <div className="vstack" style={{ gap: 20 }}>
@@ -78,14 +149,14 @@ export default function TrophiesPage() {
             style={{ gridTemplateColumns: "1fr auto", gap: 28 }}
           >
             <div>
-              <span className="rank-tag">Rango · Pionero</span>
+              <span className="rank-tag">Rango · {rankName}</span>
               <div
                 className="t-display-xl"
                 style={{ margin: "8px 0 6px", fontSize: 44 }}
               >
-                6{" "}
+                {unlockedCount}{" "}
                 <span className="text-muted" style={{ fontSize: 28 }}>
-                  de 24 trofeos
+                  de {TROPHIES_TOTAL} trofeos
                 </span>
               </div>
               <p
@@ -115,87 +186,201 @@ export default function TrophiesPage() {
           <div className="between" style={{ marginBottom: 12 }}>
             <span className="t-h2">Desbloqueados</span>
             <div className="flex gap-1.5">
-              <button className="btn btn-secondary btn-sm">Todos</button>
-              <button className="btn btn-ghost btn-sm">Comunes</button>
-              <button className="btn btn-ghost btn-sm">Raros</button>
-              <button className="btn btn-ghost btn-sm">Épicos</button>
+              <RarityFilter current={rarityFilter} value="todos" label="Todos" />
+              <RarityFilter
+                current={rarityFilter}
+                value="comunes"
+                label="Comunes"
+              />
+              <RarityFilter
+                current={rarityFilter}
+                value="raros"
+                label="Raros"
+              />
+              <RarityFilter
+                current={rarityFilter}
+                value="epicos"
+                label="Épicos"
+              />
             </div>
           </div>
-          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-            {TROPHIES.map((t) => {
-              const rc = RARITY_COLOR[t.rare];
-              return (
-                <div key={t.title} className="scout-card" style={{ padding: 18 }}>
-                  <div className="between" style={{ marginBottom: 12 }}>
-                    <BadgeCircle color={t.color} size={56} ringed>
-                      <ScoutIcon name={t.icon} size={26} />
-                    </BadgeCircle>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        background: `color-mix(in oklch, ${rc} 16%, transparent)`,
-                        color: rc,
-                        border: `1px solid color-mix(in oklch, ${rc} 30%, transparent)`,
-                      }}
-                    >
-                      {t.rare}
-                    </span>
-                  </div>
-                  <div className="t-h3" style={{ marginBottom: 2 }}>
-                    {t.title}
-                  </div>
-                  <div className="t-caption text-muted" style={{ marginBottom: 12 }}>
-                    {t.sub}
-                  </div>
+          {unlocked.length === 0 ? (
+            <div
+              className="scout-card vstack t-body-sm text-muted"
+              style={{
+                padding: 24,
+                textAlign: "center",
+                gap: 6,
+                alignItems: "center",
+              }}
+            >
+              <ScoutIcon
+                name="trophy"
+                size={28}
+                style={{ color: "var(--fg-soft)" }}
+              />
+              {auth.authenticated
+                ? "Aún no has desbloqueado trofeos. ¡Sigue jugando!"
+                : "Inicia sesión para empezar a ganar trofeos."}
+              {!auth.authenticated && (
+                <Link
+                  href="/login?next=/trophies"
+                  className="btn btn-primary btn-sm"
+                  style={{ marginTop: 8 }}
+                >
+                  Entrar
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+              {unlocked.map((t) => {
+                const rc = RARITY_COLOR[t.def.rarity];
+                const date = formatAchievedDate(t.achievedAt);
+                return (
                   <div
-                    className="t-caption text-soft hstack"
-                    style={{ gap: 6 }}
+                    key={t.def.slug}
+                    className="scout-card"
+                    style={{ padding: 18 }}
                   >
-                    <ScoutIcon
-                      name="check"
-                      size={12}
-                      style={{ color: "var(--c-mint)" }}
-                    />{" "}
-                    Conseguido · {t.date}
+                    <div className="between" style={{ marginBottom: 12 }}>
+                      <BadgeCircle color={t.def.color} size={56} ringed>
+                        <ScoutIcon name={t.def.icon} size={26} />
+                      </BadgeCircle>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "3px 8px",
+                          borderRadius: 999,
+                          background: `color-mix(in oklch, ${rc} 16%, transparent)`,
+                          color: rc,
+                          border: `1px solid color-mix(in oklch, ${rc} 30%, transparent)`,
+                        }}
+                      >
+                        {t.def.rarity}
+                      </span>
+                    </div>
+                    <div className="t-h3" style={{ marginBottom: 2 }}>
+                      {t.def.title}
+                    </div>
+                    <div
+                      className="t-caption text-muted"
+                      style={{ marginBottom: 12 }}
+                    >
+                      {t.def.description}
+                    </div>
+                    <div
+                      className="t-caption text-soft hstack"
+                      style={{ gap: 6 }}
+                    >
+                      <ScoutIcon
+                        name="check"
+                        size={12}
+                        style={{ color: "var(--c-mint)" }}
+                      />{" "}
+                      {date ? `Conseguido · ${date}` : "Conseguido"}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Locked */}
-        <section>
-          <div className="between" style={{ marginBottom: 12 }}>
-            <span className="t-h2">Por desbloquear</span>
-            <span className="t-caption text-muted">Próximos 3</span>
-          </div>
-          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-            {LOCKED.map((t) => (
-              <div
-                key={t.title}
-                className="scout-card"
-                style={{ padding: 18, opacity: 0.7 }}
-              >
-                <div className="flex items-center" style={{ gap: 14 }}>
-                  <BadgeCircle color="locked" size={56}>
-                    <ScoutIcon name="lock" size={26} />
-                  </BadgeCircle>
-                  <div>
-                    <div className="t-h3" style={{ marginBottom: 2 }}>
-                      {t.title}
+        {showLocked && locked.length > 0 && (
+          <section>
+            <div className="between" style={{ marginBottom: 12 }}>
+              <span className="t-h2">Por desbloquear</span>
+              <span className="t-caption text-muted">
+                {locked.length}{" "}
+                {locked.length === 1 ? "trofeo restante" : "trofeos restantes"}
+              </span>
+            </div>
+            <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+              {locked.map((t) => {
+                const rc = RARITY_COLOR[t.def.rarity];
+                const pct = Math.round(
+                  (Math.min(t.progress, t.target) / t.target) * 100,
+                );
+                return (
+                  <div
+                    key={t.def.slug}
+                    className="scout-card"
+                    style={{ padding: 18 }}
+                  >
+                    <div className="between" style={{ marginBottom: 12 }}>
+                      <BadgeCircle color="locked" size={56}>
+                        <ScoutIcon name="lock" size={26} />
+                      </BadgeCircle>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "3px 8px",
+                          borderRadius: 999,
+                          background: `color-mix(in oklch, ${rc} 12%, transparent)`,
+                          color: rc,
+                          border: `1px solid color-mix(in oklch, ${rc} 24%, transparent)`,
+                        }}
+                      >
+                        {t.def.rarity}
+                      </span>
                     </div>
-                    <div className="t-caption text-muted">{t.sub}</div>
+                    <div
+                      className="t-h3"
+                      style={{ marginBottom: 2, color: "var(--fg-soft)" }}
+                    >
+                      {t.def.title}
+                    </div>
+                    <div
+                      className="t-caption text-muted"
+                      style={{ marginBottom: 10 }}
+                    >
+                      {t.def.description}
+                    </div>
+                    <XpBar value={Math.min(t.progress, t.target)} max={t.target} />
+                    <div className="between" style={{ marginTop: 8 }}>
+                      <span className="t-caption text-muted">
+                        {formatProgress(t)}
+                      </span>
+                      <span
+                        className="t-mono"
+                        style={{ fontWeight: 700, color: "var(--fg-soft)" }}
+                      >
+                        {pct}%
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
     </>
+  );
+}
+
+function RarityFilter({
+  current,
+  value,
+  label,
+}: {
+  current: FilterRarity;
+  value: FilterRarity;
+  label: string;
+}) {
+  const href =
+    value === "todos" ? "/trophies" : `/trophies?rarity=${value}`;
+  const active = current === value;
+  return (
+    <Link
+      href={href}
+      className={`btn btn-sm ${active ? "btn-secondary" : "btn-ghost"}`}
+    >
+      {label}
+    </Link>
   );
 }

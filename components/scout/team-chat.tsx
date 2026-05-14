@@ -344,22 +344,41 @@ function ChatHeader({
 }) {
   return (
     <div className="hstack" style={{ gap: 10 }}>
-      <span
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          display: "grid",
-          placeItems: "center",
-          background: team?.color ? `var(--c-${team.color})` : "var(--card-hi)",
-          color: "oklch(0.16 0.04 155)",
-          fontSize: 14,
-          fontWeight: 800,
-          flexShrink: 0,
-        }}
-      >
-        {team?.emblem ?? team?.name?.charAt(0).toUpperCase() ?? "?"}
-      </span>
+      {team?.avatarUrl ? (
+        <img
+          src={team.avatarUrl}
+          alt={team.name}
+          width={32}
+          height={32}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            objectFit: "cover",
+            flexShrink: 0,
+            border: team.color
+              ? `1.5px solid var(--c-${team.color})`
+              : "1px solid var(--border-hi)",
+          }}
+        />
+      ) : (
+        <span
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            display: "grid",
+            placeItems: "center",
+            background: team?.color ? `var(--c-${team.color})` : "var(--card-hi)",
+            color: "oklch(0.16 0.04 155)",
+            fontSize: 14,
+            fontWeight: 800,
+            flexShrink: 0,
+          }}
+        >
+          {team?.emblem ?? team?.name?.charAt(0).toUpperCase() ?? "?"}
+        </span>
+      )}
       <div className="min-w-0" style={{ flex: 1 }}>
         <div className="t-overline text-muted">Chat de patrulla</div>
         <div className="t-body-sm" style={{ fontWeight: 700 }}>
@@ -395,11 +414,27 @@ function ChatHeader({
 
 function ChatBubble({ msg, grouped }: { msg: ChatMessage; grouped: boolean }) {
   const align = msg.isMe ? "flex-end" : "flex-start";
-  const bg = msg.isMe
-    ? "color-mix(in oklch, var(--primary) 80%, transparent)"
-    : "var(--card)";
-  const color = msg.isMe ? "var(--primary-ink)" : "var(--fg)";
   const initial = (msg.displayName ?? msg.username).charAt(0).toUpperCase();
+
+  const mineStyles = {
+    bg: "oklch(0.14 0.02 155)",
+    color: "var(--accent)",
+    border: "1px solid color-mix(in oklch, var(--accent) 65%, transparent)",
+    shadow:
+      "0 0 0 1px color-mix(in oklch, var(--accent) 25%, transparent), 0 8px 20px -10px color-mix(in oklch, var(--accent) 60%, transparent)",
+    nameColor: "color-mix(in oklch, var(--accent) 70%, var(--fg-soft))",
+    timeColor: "color-mix(in oklch, var(--accent) 60%, var(--fg-soft))",
+  };
+  const otherStyles = {
+    bg: "var(--primary)",
+    color: "var(--primary-ink)",
+    border: "none",
+    shadow:
+      "0 6px 18px -10px color-mix(in oklch, var(--primary) 60%, transparent)",
+    nameColor: "color-mix(in oklch, var(--primary-ink) 80%, transparent)",
+    timeColor: "color-mix(in oklch, var(--primary-ink) 65%, transparent)",
+  };
+  const s = msg.isMe ? mineStyles : otherStyles;
 
   return (
     <div
@@ -412,32 +447,21 @@ function ChatBubble({ msg, grouped }: { msg: ChatMessage; grouped: boolean }) {
       }}
     >
       {!msg.isMe ? (
-        <span
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 999,
-            display: "grid",
-            placeItems: "center",
-            background: "var(--card-hi)",
-            color: "var(--fg)",
-            fontSize: 11,
-            fontWeight: 800,
-            visibility: grouped ? "hidden" : "visible",
-            flexShrink: 0,
-          }}
-        >
-          {initial}
-        </span>
+        <ChatAvatar
+          avatarUrl={msg.avatarUrl}
+          initial={initial}
+          hidden={grouped}
+        />
       ) : null}
       <div
         style={{
           maxWidth: "78%",
           padding: "8px 12px",
           borderRadius: 14,
-          background: bg,
-          color,
-          border: msg.isMe ? "none" : "1px solid var(--border)",
+          background: s.bg,
+          color: s.color,
+          border: s.border,
+          boxShadow: s.shadow,
           borderBottomLeftRadius: msg.isMe ? 14 : grouped ? 14 : 4,
           borderBottomRightRadius: msg.isMe ? (grouped ? 14 : 4) : 14,
         }}
@@ -445,12 +469,19 @@ function ChatBubble({ msg, grouped }: { msg: ChatMessage; grouped: boolean }) {
         {!msg.isMe && !grouped ? (
           <div
             className="t-caption"
-            style={{ fontWeight: 700, color: "var(--fg-soft)", marginBottom: 2 }}
+            style={{ fontWeight: 700, color: s.nameColor, marginBottom: 2 }}
           >
             {msg.displayName ?? msg.username}
           </div>
         ) : null}
-        <div className="t-body-sm" style={{ wordWrap: "break-word", whiteSpace: "pre-wrap" }}>
+        <div
+          className="t-body-sm"
+          style={{
+            wordWrap: "break-word",
+            whiteSpace: "pre-wrap",
+            color: s.color,
+          }}
+        >
           {msg.body}
         </div>
         <div
@@ -458,15 +489,68 @@ function ChatBubble({ msg, grouped }: { msg: ChatMessage; grouped: boolean }) {
           style={{
             marginTop: 2,
             fontSize: 10,
-            opacity: 0.7,
+            opacity: 0.85,
             textAlign: msg.isMe ? "right" : "left",
-            color: msg.isMe ? "var(--primary-ink)" : "var(--fg-soft)",
+            color: s.timeColor,
           }}
         >
           {hhmm(msg.createdAt)}
         </div>
       </div>
     </div>
+  );
+}
+
+function ChatAvatar({
+  avatarUrl,
+  initial,
+  hidden,
+}: {
+  avatarUrl: string | null;
+  initial: string;
+  hidden: boolean;
+}) {
+  const size = 28;
+  const base = {
+    width: size,
+    height: size,
+    borderRadius: 999,
+    flexShrink: 0,
+    visibility: (hidden ? "hidden" : "visible") as "hidden" | "visible",
+    border: "1px solid color-mix(in oklch, var(--primary) 35%, var(--border))",
+    overflow: "hidden",
+  };
+  if (avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        width={size}
+        height={size}
+        loading="lazy"
+        style={{
+          ...base,
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+    );
+  }
+  return (
+    <span
+      style={{
+        ...base,
+        display: "grid",
+        placeItems: "center",
+        background: "var(--card-hi)",
+        color: "var(--fg)",
+        fontSize: 12,
+        fontWeight: 800,
+      }}
+    >
+      {initial}
+    </span>
   );
 }
 

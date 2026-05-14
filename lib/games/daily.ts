@@ -80,6 +80,7 @@ export async function spinDailyPick(
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/play");
   revalidatePath("/leaderboard");
   revalidatePath("/leaderboard/patrulla");
 

@@ -15,6 +15,9 @@ interface ShieldProps {
   color?: ShieldColor;
   size?: number;
   className?: string;
+  /** Foto de patrulla. Si se pasa, reemplaza la letra por la imagen recortada al silueta del escudo. */
+  imageSrc?: string | null;
+  imageAlt?: string;
 }
 
 /**
@@ -32,13 +35,18 @@ export function Shield({
   color = "mint",
   size = 64,
   className,
+  imageSrc,
+  imageAlt,
 }: ShieldProps) {
   const reactId = useId();
-  const gradId = `shield-grad-${reactId.replace(/[:]/g, "")}`;
+  const idSafe = reactId.replace(/[:]/g, "");
+  const gradId = `shield-grad-${idSafe}`;
+  const clipId = `shield-clip-${idSafe}`;
   const height = Math.round(size * 1.125);
   const text = (letter || "?").slice(0, 2).toUpperCase();
   // Letters are wider than 1 char — scale down a bit if 2 chars.
   const fontSize = text.length > 1 ? 26 : 32;
+  const hasImage = !!imageSrc;
 
   return (
     <svg
@@ -48,7 +56,7 @@ export function Shield({
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       role="img"
-      aria-label={`Escudo ${text}`}
+      aria-label={imageAlt ?? `Escudo ${text}`}
       style={{ display: "inline-block", flex: "none" }}
     >
       <defs>
@@ -62,6 +70,12 @@ export function Shield({
             style={{ stopColor: "var(--surface)", stopOpacity: 1 }}
           />
         </linearGradient>
+        {hasImage ? (
+          <clipPath id={clipId}>
+            {/* Inner card silhouette — image is clipped to this so the outer rim is preserved */}
+            <path d="M32 4 L60 14.5 L60 43.5 C60 57.5 47 66 32 67.8 C17 66 4 57.5 4 43.5 L4 14.5 Z" />
+          </clipPath>
+        ) : null}
       </defs>
 
       {/* Outer shield silhouette (colored border) */}
@@ -76,20 +90,32 @@ export function Shield({
         fill="var(--card)"
       />
 
-      {/* Letter — centered on visual middle of the shape (not box midpoint) */}
-      <text
-        x="32"
-        y="35"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontFamily="var(--font-display)"
-        fontWeight={800}
-        fontSize={fontSize}
-        fill={`var(--c-${color})`}
-        style={{ letterSpacing: "-0.05em" }}
-      >
-        {text}
-      </text>
+      {hasImage ? (
+        <image
+          href={imageSrc!}
+          x="2"
+          y="2"
+          width="60"
+          height="68"
+          preserveAspectRatio="xMidYMid slice"
+          clipPath={`url(#${clipId})`}
+        />
+      ) : (
+        /* Letter — centered on visual middle of the shape (not box midpoint) */
+        <text
+          x="32"
+          y="35"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontFamily="var(--font-display)"
+          fontWeight={800}
+          fontSize={fontSize}
+          fill={`var(--c-${color})`}
+          style={{ letterSpacing: "-0.05em" }}
+        >
+          {text}
+        </text>
+      )}
     </svg>
   );
 }

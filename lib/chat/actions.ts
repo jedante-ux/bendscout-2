@@ -20,6 +20,7 @@ export interface MyTeamForChat {
   name: string;
   color: string | null;
   emblem: string | null;
+  avatarUrl: string | null;
 }
 
 /** Devuelve la patrulla principal del usuario actual (la primera por joined_at). */
@@ -32,7 +33,7 @@ export async function getMyTeamForChat(): Promise<MyTeamForChat | null> {
 
   const { data } = await supabase
     .from("team_members")
-    .select("team_id, joined_at, teams ( id, name, color, emblem )")
+    .select("team_id, joined_at, teams ( id, name, color, emblem, avatar_url )")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: true })
     .limit(1)
@@ -42,12 +43,19 @@ export async function getMyTeamForChat(): Promise<MyTeamForChat | null> {
   const teams = (data as { teams: unknown }).teams;
   const t = Array.isArray(teams) ? teams[0] : teams;
   if (!t) return null;
-  const team = t as { id: string; name: string; color: string | null; emblem: string | null };
+  const team = t as {
+    id: string;
+    name: string;
+    color: string | null;
+    emblem: string | null;
+    avatar_url: string | null;
+  };
   return {
     teamId: team.id,
     name: team.name,
     color: team.color,
     emblem: team.emblem,
+    avatarUrl: team.avatar_url,
   };
 }
 

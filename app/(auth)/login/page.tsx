@@ -1,5 +1,4 @@
 import Image from "next/image";
-import { ScoutIcon } from "@/components/scout/icon";
 import { LoginForm } from "./login-form";
 import { safeNextPath } from "@/lib/auth/safe-redirect";
 
@@ -45,9 +44,6 @@ export default async function LoginPage({
           .login-hero-logo {
             width: 220px !important;
             margin-bottom: 20px !important;
-          }
-          .login-brand-stats {
-            row-gap: 12px !important;
           }
         }
 
@@ -188,62 +184,6 @@ function BrandPanel() {
         </p>
       </div>
 
-      <div
-        className="login-brand-stats"
-        style={{
-          display: "flex",
-          gap: 24,
-          alignItems: "center",
-          position: "relative",
-          flexWrap: "wrap",
-        }}
-      >
-        <Stat
-          icon="users"
-          color="var(--primary)"
-          n="1.2k"
-          label="scouts"
-          delay={820}
-        />
-        <Stat
-          icon="trophy"
-          color="var(--accent)"
-          n="86"
-          label="patrullas"
-          delay={900}
-        />
-        <Stat
-          icon="shieldcheck"
-          color="var(--c-purple)"
-          n="14"
-          label="insignias"
-          delay={980}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  icon,
-  color,
-  n,
-  label,
-  delay,
-}: {
-  icon: Parameters<typeof ScoutIcon>[0]["name"];
-  color: string;
-  n: string;
-  label: string;
-  delay: number;
-}) {
-  return (
-    <div
-      className="hstack t-body-sm text-muted reveal-up"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <ScoutIcon name={icon} size={16} style={{ color }} />
-      <b style={{ color: "var(--fg)" }}>{n}</b> {label}
     </div>
   );
 }

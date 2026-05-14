@@ -25,6 +25,7 @@ export interface Team {
   slug: string;
   emblem: string | null;
   color: string | null;
+  avatar_url: string | null;
   owner_id: string;
   created_at: string;
 }

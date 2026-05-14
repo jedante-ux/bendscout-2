@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Shield } from "@/components/scout/shield";
 import { ScoutIcon } from "@/components/scout/icon";
 import {
@@ -8,6 +8,9 @@ import {
   type TeamActionResult,
 } from "@/lib/teams/actions";
 import { cn } from "@/lib/utils";
+
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_MIMES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 type ShieldColor =
   | "mint"
@@ -32,6 +35,7 @@ export function TeamForm({
   initialName = "",
   initialEmblem = "L",
   initialColor = "mint" as ShieldColor,
+  initialAvatarUrl = "",
   hiddenId,
   action = createTeamAction,
   submitLabel = "Crear patrulla",
@@ -39,6 +43,7 @@ export function TeamForm({
   initialName?: string;
   initialEmblem?: string;
   initialColor?: ShieldColor;
+  initialAvatarUrl?: string;
   hiddenId?: string;
   action?: typeof createTeamAction;
   submitLabel?: string;
@@ -52,13 +57,71 @@ export function TeamForm({
   const [emblem, setEmblem] = useState(initialEmblem);
   const [color, setColor] = useState<ShieldColor>(initialColor);
 
-  const fieldError = (f: "name" | "emblem" | "color") =>
+  // Avatar uploader state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (filePreview) URL.revokeObjectURL(filePreview);
+    };
+  }, [filePreview]);
+
+  const previewUrl = filePreview
+    ? filePreview
+    : removeAvatar
+      ? null
+      : initialAvatarUrl || null;
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setFileError(null);
+    if (!file) {
+      if (filePreview) URL.revokeObjectURL(filePreview);
+      setFilePreview(null);
+      return;
+    }
+    if (!ACCEPTED_MIMES.includes(file.type)) {
+      setFileError("Formato no soportado. Usa JPG, PNG, WEBP o GIF.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setFileError("La imagen pesa más de 5 MB.");
+      e.target.value = "";
+      return;
+    }
+    if (filePreview) URL.revokeObjectURL(filePreview);
+    setFilePreview(URL.createObjectURL(file));
+    setRemoveAvatar(false);
+  }
+
+  function handleRemove() {
+    if (filePreview) URL.revokeObjectURL(filePreview);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setRemoveAvatar(true);
+    setFileError(null);
+  }
+
+  const fieldError = (f: "name" | "emblem" | "color" | "avatarFile") =>
     state && !state.ok && state.field === f ? state.error : null;
   const genericError = state && !state.ok && !state.field ? state.error : null;
 
   return (
-    <form action={formAction} className="vstack" style={{ gap: 16 }}>
+    <form
+      action={formAction}
+      className="vstack"
+      style={{ gap: 16 }}
+    >
       {hiddenId && <input type="hidden" name="teamId" value={hiddenId} />}
+      <input
+        type="hidden"
+        name="removeAvatar"
+        value={removeAvatar ? "1" : "0"}
+      />
 
       {/* Preview */}
       <div
@@ -69,6 +132,8 @@ export function TeamForm({
           letter={(emblem || "?").toUpperCase()}
           color={color}
           size={88}
+          imageSrc={previewUrl}
+          imageAlt={name || "Patrulla"}
         />
         <div
           className="t-display-sm"
@@ -76,6 +141,55 @@ export function TeamForm({
         >
           {name || "Tu patrulla"}
         </div>
+        <div className="flex flex-wrap gap-2" style={{ marginTop: 14, justifyContent: "center" }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ScoutIcon name="edit" size={14} />
+            {previewUrl ? "Cambiar foto" : "Subir foto"}
+          </button>
+          {previewUrl && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={handleRemove}
+              style={{ color: "var(--c-rose)" }}
+            >
+              <ScoutIcon name="close" size={14} />
+              Quitar
+            </button>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          id="avatarFile"
+          name="avatarFile"
+          type="file"
+          accept={ACCEPTED_MIMES.join(",")}
+          className="sr-only"
+          onChange={handleFileChange}
+          aria-invalid={!!fileError || !!fieldError("avatarFile")}
+        />
+        {(fileError || fieldError("avatarFile")) && (
+          <p
+            className="t-caption"
+            style={{ color: "var(--c-rose)", marginTop: 8, marginBottom: 0 }}
+          >
+            {fileError ?? fieldError("avatarFile")}
+          </p>
+        )}
+        <p
+          className="t-caption text-soft"
+          style={{
+            marginTop: fileError ? 4 : 8,
+            marginBottom: 0,
+            textAlign: "center",
+          }}
+        >
+          JPG, PNG, WEBP o GIF. Máx 5 MB.
+        </p>
       </div>
 
       <div>

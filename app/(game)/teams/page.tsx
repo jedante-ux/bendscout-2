@@ -88,6 +88,8 @@ export default async function TeamsPage() {
               letter={team.emblem ?? team.name.charAt(0).toUpperCase()}
               color={color}
               size={120}
+              imageSrc={team.avatar_url}
+              imageAlt={team.name}
             />
             <div>
               <span

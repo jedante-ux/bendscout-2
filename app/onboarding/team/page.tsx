@@ -125,6 +125,8 @@ export default async function OnboardingTeamPage() {
                       letter={t.emblem ?? t.name.charAt(0).toUpperCase()}
                       color={colorOf(t.color)}
                       size={56}
+                      imageSrc={t.avatar_url}
+                      imageAlt={t.name}
                     />
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>

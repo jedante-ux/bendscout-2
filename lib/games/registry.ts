@@ -14,6 +14,17 @@ export interface GameDefinition {
 
 export const GAMES: GameDefinition[] = [
   {
+    key: "tarzan",
+    title: "Pista de Tarzán",
+    tagline:
+      "Salta piedras y agáchate bajo las ramas. ¡Cada vez es más rápido!",
+    category: "nature",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🌴",
+    status: "live",
+    route: "/play/tarzan",
+  },
+  {
     key: "knot-rush",
     title: "Knot Rush",
     tagline: "Identifica el nudo correcto contra el reloj.",

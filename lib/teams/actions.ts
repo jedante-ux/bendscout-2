@@ -27,9 +27,27 @@ const emblemSchema = z
   .regex(/^[a-zA-Z0-9]+$/, "Solo letras o números");
 const colorSchema = z.enum(TEAM_COLORS);
 
+const MAX_TEAM_AVATAR_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_TEAM_AVATAR_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const TEAM_AVATAR_MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
 export type TeamActionResult =
   | { ok: true; teamId?: string }
-  | { ok: false; error: string; field?: "name" | "emblem" | "color" };
+  | {
+      ok: false;
+      error: string;
+      field?: "name" | "emblem" | "color" | "avatarFile";
+    };
 
 function slugify(name: string): string {
   return (
@@ -41,6 +59,64 @@ function slugify(name: string): string {
       .replace(/^-|-$/g, "")
       .slice(0, 40) || "patrulla"
   );
+}
+
+/**
+ * Sube un nuevo avatar al bucket `team-avatars` en la carpeta `{teamId}/...`
+ * y devuelve la URL pública. Hace cleanup best-effort de archivos anteriores.
+ */
+async function uploadTeamAvatar(
+  teamId: string,
+  file: File,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  if (!ACCEPTED_TEAM_AVATAR_MIMES.has(file.type)) {
+    return {
+      ok: false,
+      error: "Formato no soportado. Usa JPG, PNG, WEBP o GIF.",
+    };
+  }
+  if (file.size > MAX_TEAM_AVATAR_BYTES) {
+    return { ok: false, error: "La imagen pesa más de 5 MB." };
+  }
+
+  const supabase = await createClient();
+  const ext = TEAM_AVATAR_MIME_TO_EXT[file.type] ?? "jpg";
+  const path = `${teamId}/avatar-${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("team-avatars")
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type,
+    });
+
+  if (uploadError) {
+    return {
+      ok: false,
+      error: `No pudimos subir la foto: ${uploadError.message}`,
+    };
+  }
+
+  const { data: pub } = supabase.storage
+    .from("team-avatars")
+    .getPublicUrl(path);
+  return { ok: true, url: pub.publicUrl };
+}
+
+/** Limpia archivos viejos en la carpeta de la patrulla, manteniendo `keepFileName`. */
+async function cleanupTeamAvatars(teamId: string, keepFileName: string | null) {
+  const supabase = await createClient();
+  const { data: existing } = await supabase.storage
+    .from("team-avatars")
+    .list(teamId);
+  if (!existing || existing.length === 0) return;
+  const toRemove = existing
+    .map((f) => `${teamId}/${f.name}`)
+    .filter((p) => p.split("/").pop() !== keepFileName);
+  if (toRemove.length > 0) {
+    await supabase.storage.from("team-avatars").remove(toRemove);
+  }
 }
 
 async function uniqueSlug(base: string): Promise<string> {
@@ -123,6 +199,20 @@ export async function createTeamAction(
     // Best effort: clean up team if the member insert failed
     await supabase.from("teams").delete().eq("id", team.id);
     return { ok: false, error: memberError.message };
+  }
+
+  // Avatar opcional al crear.
+  const avatarFile = formData.get("avatarFile");
+  if (avatarFile instanceof File && avatarFile.size > 0) {
+    const up = await uploadTeamAvatar(team.id, avatarFile);
+    if (!up.ok) {
+      // No abortamos la creación de la patrulla; reportamos el fallo de foto.
+      return { ok: false, error: up.error, field: "avatarFile" };
+    }
+    await supabase
+      .from("teams")
+      .update({ avatar_url: up.url })
+      .eq("id", team.id);
   }
 
   revalidatePath("/teams");
@@ -215,7 +305,7 @@ export async function updateTeamAction(
   // RLS restricts to owner; we still verify upfront for a nicer error.
   const { data: team } = await supabase
     .from("teams")
-    .select("id, owner_id")
+    .select("id, owner_id, avatar_url")
     .eq("id", teamId)
     .single();
 
@@ -223,13 +313,40 @@ export async function updateTeamAction(
     return { ok: false, error: "Solo el líder puede editar la patrulla." };
   }
 
+  const updates: Record<string, string | null> = { name, emblem, color };
+
+  // Avatar: subir nuevo archivo, quitar el actual o no tocar.
+  const removeAvatar = String(formData.get("removeAvatar") ?? "0") === "1";
+  const avatarFile = formData.get("avatarFile");
+  const hasNewAvatar = avatarFile instanceof File && avatarFile.size > 0;
+
+  let keepFileName: string | null = null;
+  if (hasNewAvatar) {
+    const up = await uploadTeamAvatar(teamId, avatarFile as File);
+    if (!up.ok) {
+      return { ok: false, error: up.error, field: "avatarFile" };
+    }
+    updates.avatar_url = up.url;
+    keepFileName = up.url.split("/").pop() ?? null;
+  } else if (removeAvatar) {
+    updates.avatar_url = null;
+  }
+
   const { error } = await supabase
     .from("teams")
-    .update({ name, emblem, color })
+    .update(updates)
     .eq("id", teamId);
 
   if (error) return { ok: false, error: error.message };
 
+  // Best-effort: limpiar archivos viejos del bucket si reemplazó o quitó.
+  if (hasNewAvatar || removeAvatar) {
+    await cleanupTeamAvatars(teamId, keepFileName);
+  }
+
   revalidatePath("/teams");
+  revalidatePath("/teams/edit");
+  revalidatePath("/onboarding/team");
+  revalidatePath("/dashboard");
   redirect("/teams");
 }

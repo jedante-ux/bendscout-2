@@ -226,6 +226,8 @@ function TeamsView({
                   letter={t.emblem ?? t.name.charAt(0).toUpperCase()}
                   color={color}
                   size={48}
+                  imageSrc={t.avatar_url}
+                  imageAlt={t.name}
                 />
                 <div>
                   <div
@@ -354,6 +356,8 @@ function PodiumColumn({
           letter={entry.emblem ?? entry.name.charAt(0).toUpperCase()}
           color={color}
           size={highlight ? 80 : 64}
+          imageSrc={entry.avatar_url}
+          imageAlt={entry.name}
         />
       </div>
       <div

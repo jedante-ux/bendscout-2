@@ -64,6 +64,7 @@ export default async function EditTeamPage() {
           initialName={team.name}
           initialEmblem={team.emblem ?? team.name.charAt(0).toUpperCase()}
           initialColor={colorOf(team.color)}
+          initialAvatarUrl={team.avatar_url ?? ""}
           action={updateTeamAction}
           submitLabel="Guardar cambios"
         />

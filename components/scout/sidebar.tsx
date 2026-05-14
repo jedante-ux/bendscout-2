@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ScoutLogo } from "./logo";
 import { ProfileCard } from "./profile-card";
 import { ScoutIcon, type ScoutIconName } from "./icon";
 import { cn } from "@/lib/utils";
@@ -32,8 +32,19 @@ export function Sidebar({ auth }: { auth: AuthState }) {
         borderColor: "var(--border)",
       }}
     >
-      <Link href="/" className="mb-6 inline-flex px-2">
-        <ScoutLogo size={32} wordmarkSize={18} />
+      <Link
+        href="/"
+        className="mb-6 inline-flex px-2"
+        aria-label="BendScout"
+      >
+        <Image
+          src="/icons/logo.png"
+          alt="BendScout"
+          width={400}
+          height={120}
+          priority
+          className="h-10 w-auto select-none"
+        />
       </Link>
 
       <nav className="flex flex-1 flex-col gap-1">
@@ -64,6 +75,7 @@ export function Sidebar({ auth }: { auth: AuthState }) {
               xp={auth.profile.xp ?? 0}
               xpMax={Math.max(6000, (auth.profile.xp ?? 0) + 1000)}
               initials={initialsOf(auth.profile.display_name ?? auth.profile.username)}
+              avatarUrl={auth.profile.avatar_url}
             />
             <form action={logoutAction}>
               <button
