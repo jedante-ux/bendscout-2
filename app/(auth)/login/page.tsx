@@ -90,7 +90,9 @@ function BrandPanel() {
         padding: 40,
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
+        justifyContent: "center",
+        alignItems: "center",
+        textAlign: "center",
         background:
           "linear-gradient(160deg, oklch(0.30 0.08 145) 0%, oklch(0.18 0.04 155) 70%)",
         overflow: "hidden",
@@ -115,9 +117,14 @@ function BrandPanel() {
         }}
       />
 
-      <div style={{ position: "relative" }} />
-
-      <div style={{ position: "relative" }}>
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
         <Image
           src="/icons/logo.png"
           alt=""
