@@ -40,11 +40,16 @@ export async function signupAction(
   if (!p.success) return { ok: false, error: p.error.issues[0].message, field: "password" };
 
   const supabase = await createClient();
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { username, display_name: username },
+      // Sin esto, Supabase usa el "Site URL" del proyecto (localhost por
+      // default) y los correos de confirmación apuntan a tu máquina.
+      emailRedirectTo: `${siteUrl}/api/auth/callback?next=/onboarding/team`,
     },
   });
 
