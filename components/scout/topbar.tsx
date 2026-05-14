@@ -1,4 +1,5 @@
-import { ScoutLogo } from "./logo";
+import Image from "next/image";
+import Link from "next/link";
 import { ScoutIcon } from "./icon";
 import type { AuthState } from "@/lib/auth/session";
 
@@ -33,7 +34,15 @@ export function Topbar({
     >
       <div className="flex flex-col gap-4 pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="lg:hidden">
-          <ScoutLogo size={32} wordmarkSize={18} />
+          <Image
+            src="/icons/logo.png"
+            alt="BendScout"
+            width={800}
+            height={380}
+            priority
+            sizes="160px"
+            style={{ height: 40, width: "auto" }}
+          />
         </div>
         <div className="space-y-1">
           <h1 className="t-h1">
@@ -71,13 +80,13 @@ export function Topbar({
             )}
           </button>
 
-          <button
-            type="button"
+          <Link
+            href="/settings"
             aria-label="Ajustes"
             className="btn btn-secondary btn-icon"
           >
             <ScoutIcon name="settings" size={18} />
-          </button>
+          </Link>
         </div>
       </div>
     </header>

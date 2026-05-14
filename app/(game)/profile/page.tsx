@@ -3,7 +3,9 @@ import { Topbar } from "@/components/scout/topbar";
 import { Avatar } from "@/components/scout/avatar";
 import { BadgeCircle } from "@/components/scout/badge-circle";
 import { XpBar } from "@/components/scout/xp-bar";
-import { ScoutIcon, type ScoutIconName } from "@/components/scout/icon";
+import { ScoutIcon } from "@/components/scout/icon";
+import { INSIGNIAS as INSIGNIA_REGISTRY } from "@/lib/insignias/registry";
+import { getUserInsignias, countUnlocked } from "@/lib/insignias/queries";
 
 type BadgeColor =
   | "mint"
@@ -45,32 +47,17 @@ const WEEK = [
   { d: "D", v: 65 },
 ];
 
-const INSIGNIAS: Array<{
-  color: BadgeColor;
-  icon: ScoutIconName;
-  name: string;
-  locked?: boolean;
-}> = [
-  { color: "mint", icon: "leaf", name: "Naturalista" },
-  { color: "rose", icon: "shield", name: "Guardián" },
-  { color: "gold", icon: "starfill", name: "Pionero" },
-  { color: "purple", icon: "starfill", name: "Explorador" },
-  { color: "orange", icon: "flame", name: "Llama eterna" },
-  { color: "sky", icon: "map", name: "Cartógrafo" },
-  { color: "teal", icon: "knot", name: "Maestro de nudos" },
-  { color: "mint", icon: "tent", name: "Campista" },
-  { color: "rose", icon: "heart", name: "Buen samaritano" },
-  { color: "purple", icon: "compass", name: "Brújula" },
-  { color: "gold", icon: "trophy", name: "Top 3 semanal" },
-  { color: "sky", icon: "lightbulb", name: "Sabio scout", locked: true },
-];
-
 export default async function ProfilePage() {
   const { getAuthState } = await import("@/lib/auth/session");
   const { getUserTeam } = await import("@/lib/teams/queries");
+  const { getUserStats } = await import("@/lib/games/queries");
   const auth = await getAuthState();
   const profile = auth.profile;
   const team = profile ? await getUserTeam(profile.id) : null;
+  const stats = profile ? await getUserStats(profile.id) : null;
+  const insignias = profile ? await getUserInsignias(profile.id) : [];
+  const insigniasUnlocked = countUnlocked(insignias);
+  const insigniasTotal = INSIGNIA_REGISTRY.length;
 
   const displayName = profile?.display_name ?? profile?.username ?? "Invitado";
   const username = profile?.username ?? "invitado";
@@ -80,6 +67,12 @@ export default async function ProfilePage() {
         year: "numeric",
       })
     : null;
+
+  const level = stats?.level ?? 1;
+  const xp = stats?.xp ?? 0;
+  const xpInto = stats?.xpIntoLevel ?? 0;
+  const xpStep = (stats?.xpIntoLevel ?? 0) + (stats?.xpToNext ?? 250);
+  const streak = stats?.streakDays ?? 0;
 
   return (
     <>
@@ -132,11 +125,27 @@ export default async function ProfilePage() {
                 {since && ` · Desde ${since}`}
               </div>
               <div className="flex flex-wrap" style={{ gap: 24, marginTop: 16 }}>
-                <Stat label="Nivel" value="24" color="var(--primary)" />
-                <Stat label="XP total" value="54 250" />
-                <Stat label="Insignias" value="12" />
-                <Stat label="Trofeos" value="4" color="var(--accent)" />
-                <Stat label="Racha" value="12d" color="var(--c-orange)" />
+                <Stat label="Nivel" value={String(level)} color="var(--primary)" />
+                <Stat label="XP total" value={xp.toLocaleString("es")} />
+                <Stat
+                  label="Pts. semana"
+                  value={(stats?.weeklyPoints ?? 0).toLocaleString("es")}
+                  color="var(--accent)"
+                />
+                <Stat
+                  label="Partidas"
+                  value={String(stats?.weeklyPlays ?? 0)}
+                />
+                <Stat
+                  label="Racha"
+                  value={streak > 0 ? `${streak}d` : "—"}
+                  color="var(--c-orange)"
+                />
+                <Stat
+                  label="Insignias"
+                  value={String(insigniasUnlocked)}
+                  color="var(--c-gold)"
+                />
               </div>
             </div>
             <div className="flex flex-col" style={{ gap: 8 }}>
@@ -306,7 +315,7 @@ export default async function ProfilePage() {
                 className="t-caption text-muted"
                 style={{ marginLeft: 6 }}
               >
-                12 de 24
+                {insigniasUnlocked} de {insigniasTotal}
               </span>
             </span>
             <div className="flex gap-1.5">

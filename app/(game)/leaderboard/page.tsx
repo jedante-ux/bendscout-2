@@ -1,8 +1,19 @@
+import Link from "next/link";
 import { Topbar } from "@/components/scout/topbar";
 import { Shield } from "@/components/scout/shield";
-import { BadgeCircle } from "@/components/scout/badge-circle";
 import { XpBar } from "@/components/scout/xp-bar";
+import { BadgeCircle } from "@/components/scout/badge-circle";
+import { Avatar } from "@/components/scout/avatar";
 import { ScoutIcon } from "@/components/scout/icon";
+import { getAuthState } from "@/lib/auth/session";
+import {
+  getActiveJamboree,
+  getJamboreeLeaderboard,
+  getTeamLeaderboard,
+  type TeamLeaderboardEntry,
+  type LeaderboardEntry,
+} from "@/lib/games/queries";
+import { getUserTeam } from "@/lib/teams/queries";
 
 type TeamColor =
   | "mint"
@@ -13,219 +24,181 @@ type TeamColor =
   | "sky"
   | "teal";
 
-interface TeamRow {
-  pos: number;
-  letter: string;
-  color: TeamColor;
-  name: string;
-  members: number;
-  pts: number;
-  delta: string;
-  up?: boolean;
-  you?: boolean;
+function colorOf(c: string | null | undefined): TeamColor {
+  const valid: TeamColor[] = [
+    "mint",
+    "gold",
+    "rose",
+    "purple",
+    "orange",
+    "sky",
+    "teal",
+  ];
+  return (valid as string[]).includes(c ?? "") ? (c as TeamColor) : "mint";
 }
 
-const TEAMS: TeamRow[] = [
-  { pos: 1, letter: "S", color: "gold", name: "Serpientes Plata", members: 9, pts: 42180, delta: "+8%", up: true },
-  { pos: 2, letter: "L", color: "mint", name: "Lobos del Bosque", members: 8, pts: 38940, delta: "+3%", up: true, you: true },
-  { pos: 3, letter: "B", color: "purple", name: "Búhos Nocturnos", members: 7, pts: 31620, delta: "0%" },
-  { pos: 4, letter: "A", color: "rose", name: "Águilas Reales", members: 6, pts: 29840, delta: "-2%", up: false },
-  { pos: 5, letter: "Z", color: "sky", name: "Zorros Veloces", members: 5, pts: 26430, delta: "+1%", up: true },
-  { pos: 6, letter: "P", color: "orange", name: "Pumas Andinos", members: 4, pts: 22810, delta: "+12%", up: true },
-  { pos: 7, letter: "C", color: "teal", name: "Castores", members: 6, pts: 18920, delta: "-4%", up: false },
-];
+export default async function LeaderboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: "teams" | "individual" }>;
+}) {
+  const params = await searchParams;
+  const tab = params.tab === "individual" ? "individual" : "teams";
 
-export default function LeaderboardPage() {
+  const auth = await getAuthState();
+  const jamboree = await getActiveJamboree();
+  const teamRows = jamboree ? await getTeamLeaderboard(jamboree.id, 20) : [];
+  const userRows = jamboree
+    ? await getJamboreeLeaderboard(jamboree.id, 20)
+    : [];
+  const myTeam = auth.userId ? await getUserTeam(auth.userId) : null;
+  const myUserId = auth.userId ?? null;
+
   return (
     <>
       <Topbar
+        auth={auth}
         greeting="Ranking"
-        subtitle="Las patrullas más activas de la tropa esta semana"
-        notifications={3}
+        subtitle={
+          jamboree
+            ? `${jamboree.name} — ${formatDateRange(jamboree.starts_at, jamboree.ends_at)}`
+            : "Las patrullas más activas de la tropa"
+        }
+        notifications={0}
       />
 
       <div className="vstack" style={{ gap: 20 }}>
         {/* Tabs */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <button className="btn btn-secondary">
+          <Link
+            href="/leaderboard"
+            className={`btn ${tab === "teams" ? "btn-secondary" : "btn-ghost"}`}
+          >
             <ScoutIcon name="users" size={16} /> Patrullas
-          </button>
-          <button className="btn btn-ghost">
+          </Link>
+          <Link
+            href="/leaderboard?tab=individual"
+            className={`btn ${tab === "individual" ? "btn-secondary" : "btn-ghost"}`}
+          >
             <ScoutIcon name="user" size={16} /> Individual
-          </button>
-          <button className="btn btn-ghost">Top tropas</button>
+          </Link>
           <div style={{ flex: 1 }} />
-          <button className="btn btn-outline btn-sm">
-            <ScoutIcon name="filter" size={14} /> Esta semana
-          </button>
+          <span className="chip chip-accent">
+            <ScoutIcon name="flame" size={12} /> Esta semana
+          </span>
         </div>
 
-        {/* Podium */}
-        <section
-          className="scout-card"
-          style={{ padding: 24, position: "relative", overflow: "hidden" }}
+        {jamboree == null ? (
+          <NoJamboree />
+        ) : tab === "teams" ? (
+          <TeamsView rows={teamRows} myTeamId={myTeam?.id ?? null} />
+        ) : (
+          <IndividualView rows={userRows} myUserId={myUserId} />
+        )}
+      </div>
+    </>
+  );
+}
+
+function formatDateRange(start: string, end: string) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("es", { day: "numeric", month: "short" });
+  return `${fmt(s)} – ${fmt(e)}`;
+}
+
+function NoJamboree() {
+  return (
+    <section
+      className="scout-card"
+      style={{ padding: 32, textAlign: "center" }}
+    >
+      <div className="grid place-items-center" style={{ marginBottom: 14 }}>
+        <BadgeCircle color="rose" size={56}>
+          <ScoutIcon name="flame" size={26} />
+        </BadgeCircle>
+      </div>
+      <h2 className="t-display-sm" style={{ margin: "0 0 6px" }}>
+        Sin temporada activa
+      </h2>
+      <p className="t-body-sm text-muted" style={{ maxWidth: 360, margin: "0 auto" }}>
+        El primer jamboree arranca al iniciar tu primer minijuego.
+      </p>
+    </section>
+  );
+}
+
+function TeamsView({
+  rows,
+  myTeamId,
+}: {
+  rows: TeamLeaderboardEntry[];
+  myTeamId: string | null;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section className="scout-card" style={{ padding: 32, textAlign: "center" }}>
+        <div className="grid place-items-center" style={{ marginBottom: 14 }}>
+          <BadgeCircle color="mint" size={56}>
+            <ScoutIcon name="users" size={26} />
+          </BadgeCircle>
+        </div>
+        <h2 className="t-display-sm" style={{ margin: "0 0 6px" }}>
+          Aún no hay patrullas en el ranking
+        </h2>
+        <p className="t-body-sm text-muted" style={{ maxWidth: 380, margin: "0 auto" }}>
+          Sé la primera patrulla en jugar esta semana.
+        </p>
+      </section>
+    );
+  }
+
+  const top3 = rows.slice(0, 3);
+  const rest = rows.slice(3);
+  const maxPoints = rows[0]?.total_points || 1;
+
+  return (
+    <>
+      {top3.length > 0 && <Podium rows={top3} />}
+      <section className="scout-card" style={{ padding: 18 }}>
+        <div
+          className="t-overline"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "40px 64px 1fr 120px 100px",
+            gap: 12,
+            padding: "8px 12px",
+            color: "var(--fg-soft)",
+          }}
         >
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(ellipse 50% 80% at 50% 0%, color-mix(in oklch, var(--accent) 18%, transparent), transparent 60%)",
-            }}
-          />
-          <div
-            className="relative grid items-end"
-            style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}
-          >
-            {/* 2nd */}
-            <div className="text-center">
-              <div className="flex justify-center">
-                <Shield letter="L" color="mint" size={64} />
-              </div>
-              <div style={{ marginTop: 10, fontWeight: 800, fontSize: 16 }}>
-                Lobos del Bosque
-              </div>
-              <div className="t-num" style={{ fontSize: 22, marginTop: 4 }}>
-                38 940
-              </div>
+          <div>#</div>
+          <div></div>
+          <div>Patrulla</div>
+          <div>Progreso</div>
+          <div style={{ textAlign: "right" }}>Puntos</div>
+        </div>
+        <div className="vstack" style={{ gap: 6 }}>
+          {rows.map((t) => {
+            const isYou = myTeamId === t.team_id;
+            const color = colorOf(t.color);
+            return (
               <div
-                className="grid place-items-center"
-                style={{
-                  marginTop: 12,
-                  height: 90,
-                  borderRadius: "var(--r-md) var(--r-md) 0 0",
-                  background: "color-mix(in oklch, var(--fg) 12%, transparent)",
-                }}
-              >
-                <span
-                  className="t-display-2xl"
-                  style={{ fontSize: 56, color: "var(--fg-muted)" }}
-                >
-                  2
-                </span>
-              </div>
-            </div>
-
-            {/* 1st */}
-            <div className="text-center">
-              <div className="flex justify-center">
-                <BadgeCircle color="gold" size={36}>
-                  <ScoutIcon name="trophy" size={18} />
-                </BadgeCircle>
-              </div>
-              <div style={{ marginTop: 6 }} className="flex justify-center">
-                <Shield letter="S" color="gold" size={80} />
-              </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  fontWeight: 800,
-                  fontSize: 18,
-                  color: "var(--accent)",
-                }}
-              >
-                Serpientes Plata
-              </div>
-              <div
-                className="t-num"
-                style={{ fontSize: 28, marginTop: 4, color: "var(--accent)" }}
-              >
-                42 180
-              </div>
-              <div
-                className="grid place-items-center"
-                style={{
-                  marginTop: 12,
-                  height: 120,
-                  borderRadius: "var(--r-md) var(--r-md) 0 0",
-                  background:
-                    "linear-gradient(180deg, color-mix(in oklch, var(--accent) 35%, transparent), color-mix(in oklch, var(--accent) 15%, transparent))",
-                  border:
-                    "1px solid color-mix(in oklch, var(--accent) 40%, transparent)",
-                }}
-              >
-                <span
-                  className="t-display-2xl"
-                  style={{ fontSize: 72, color: "var(--accent)" }}
-                >
-                  1
-                </span>
-              </div>
-            </div>
-
-            {/* 3rd */}
-            <div className="text-center">
-              <div className="flex justify-center">
-                <Shield letter="B" color="purple" size={64} />
-              </div>
-              <div style={{ marginTop: 10, fontWeight: 800, fontSize: 16 }}>
-                Búhos Nocturnos
-              </div>
-              <div className="t-num" style={{ fontSize: 22, marginTop: 4 }}>
-                31 620
-              </div>
-              <div
-                className="grid place-items-center"
-                style={{
-                  marginTop: 12,
-                  height: 70,
-                  borderRadius: "var(--r-md) var(--r-md) 0 0",
-                  background:
-                    "color-mix(in oklch, var(--c-rose) 18%, transparent)",
-                }}
-              >
-                <span
-                  className="t-display-2xl"
-                  style={{
-                    fontSize: 48,
-                    color: "color-mix(in oklch, var(--c-rose) 80%, var(--fg))",
-                  }}
-                >
-                  3
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Table */}
-        <section className="scout-card" style={{ padding: 18 }}>
-          <div
-            className="t-overline"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "40px 64px 1fr 120px 100px 80px",
-              gap: 12,
-              padding: "8px 12px",
-              color: "var(--fg-soft)",
-            }}
-          >
-            <div>#</div>
-            <div></div>
-            <div>Patrulla</div>
-            <div>Progreso</div>
-            <div style={{ textAlign: "right" }}>Puntos</div>
-            <div style={{ textAlign: "right" }}>Δ</div>
-          </div>
-          <div className="vstack" style={{ gap: 6 }}>
-            {TEAMS.map((t) => (
-              <div
-                key={t.pos}
+                key={t.team_id}
                 className="grid items-center"
                 style={{
-                  gridTemplateColumns: "40px 64px 1fr 120px 100px 80px",
+                  gridTemplateColumns: "40px 64px 1fr 120px 100px",
                   gap: 12,
                   padding: "10px 12px",
                   borderRadius: "var(--r-md)",
-                  background: t.you
+                  background: isYou
                     ? "color-mix(in oklch, var(--primary) 10%, transparent)"
-                    : t.pos === 1
+                    : t.rank_position === 1
                       ? "color-mix(in oklch, var(--accent) 8%, transparent)"
                       : "var(--surface)",
-                  border: t.you
+                  border: isYou
                     ? "1px solid color-mix(in oklch, var(--primary) 30%, transparent)"
-                    : t.pos === 1
+                    : t.rank_position === 1
                       ? "1px solid color-mix(in oklch, var(--accent) 30%, transparent)"
                       : "1px solid transparent",
                 }}
@@ -233,13 +206,18 @@ export default function LeaderboardPage() {
                 <span
                   className="t-display-sm"
                   style={{
-                    color: t.pos <= 3 ? "var(--accent)" : "var(--fg-muted)",
+                    color:
+                      t.rank_position <= 3 ? "var(--accent)" : "var(--fg-muted)",
                     textAlign: "center",
                   }}
                 >
-                  {t.pos}
+                  {t.rank_position}
                 </span>
-                <Shield letter={t.letter} color={t.color} size={48} />
+                <Shield
+                  letter={t.emblem ?? t.name.charAt(0).toUpperCase()}
+                  color={color}
+                  size={48}
+                />
                 <div>
                   <div
                     style={{
@@ -251,47 +229,306 @@ export default function LeaderboardPage() {
                     }}
                   >
                     {t.name}
-                    {t.you && (
+                    {isYou && (
                       <span className="chip" style={{ fontSize: 9 }}>
                         Tu patrulla
                       </span>
                     )}
                   </div>
                   <div className="t-caption text-muted">
-                    {t.members} scouts · racha activa
+                    {t.members_active}{" "}
+                    {t.members_active === 1 ? "scout activo" : "scouts activos"}
                   </div>
                 </div>
-                <XpBar value={t.pts} max={45000} variant={t.pos === 1 ? "gold" : "primary"} />
+                <XpBar
+                  value={t.total_points}
+                  max={maxPoints}
+                  variant={t.rank_position === 1 ? "gold" : "primary"}
+                />
                 <span
                   className="t-num"
                   style={{
                     fontSize: 18,
                     textAlign: "right",
-                    color: t.pos === 1 ? "var(--accent)" : "var(--fg)",
-                  }}
-                >
-                  {t.pts.toLocaleString("es")}
-                </span>
-                <span
-                  style={{
-                    textAlign: "right",
                     color:
-                      t.delta === "0%"
-                        ? "var(--fg-soft)"
-                        : t.up
-                          ? "var(--c-mint)"
-                          : "var(--c-rose)",
-                    fontSize: 12,
-                    fontWeight: 700,
+                      t.rank_position === 1 ? "var(--accent)" : "var(--fg)",
                   }}
                 >
-                  {t.delta}
+                  {t.total_points.toLocaleString("es")}
                 </span>
               </div>
-            ))}
-          </div>
-        </section>
-      </div>
+            );
+          })}
+        </div>
+        {rest.length === 0 && rows.length <= 3 && (
+          <p
+            className="t-caption text-muted"
+            style={{ textAlign: "center", marginTop: 16 }}
+          >
+            Solo {rows.length}{" "}
+            {rows.length === 1 ? "patrulla compite" : "patrullas compiten"} esta
+            semana.
+          </p>
+        )}
+      </section>
     </>
+  );
+}
+
+function Podium({ rows }: { rows: TeamLeaderboardEntry[] }) {
+  const [a, b, c] = [rows[1], rows[0], rows[2]];
+
+  return (
+    <section
+      className="scout-card"
+      style={{ padding: 24, position: "relative", overflow: "hidden" }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 50% 80% at 50% 0%, color-mix(in oklch, var(--accent) 18%, transparent), transparent 60%)",
+        }}
+      />
+      <div
+        className="relative grid items-end"
+        style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}
+      >
+        {/* 2nd */}
+        {a ? (
+          <PodiumColumn entry={a} height={90} />
+        ) : (
+          <div />
+        )}
+
+        {/* 1st */}
+        {b ? (
+          <PodiumColumn entry={b} height={120} highlight />
+        ) : (
+          <div />
+        )}
+
+        {/* 3rd */}
+        {c ? (
+          <PodiumColumn entry={c} height={70} />
+        ) : (
+          <div />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PodiumColumn({
+  entry,
+  height,
+  highlight = false,
+}: {
+  entry: TeamLeaderboardEntry;
+  height: number;
+  highlight?: boolean;
+}) {
+  const color = colorOf(entry.color);
+  return (
+    <div className="text-center">
+      {highlight && (
+        <div className="flex justify-center" style={{ marginBottom: 6 }}>
+          <BadgeCircle color="gold" size={36}>
+            <ScoutIcon name="trophy" size={18} />
+          </BadgeCircle>
+        </div>
+      )}
+      <div className="flex justify-center">
+        <Shield
+          letter={entry.emblem ?? entry.name.charAt(0).toUpperCase()}
+          color={color}
+          size={highlight ? 80 : 64}
+        />
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          fontWeight: 800,
+          fontSize: highlight ? 18 : 16,
+          color: highlight ? "var(--accent)" : "var(--fg)",
+        }}
+      >
+        {entry.name}
+      </div>
+      <div
+        className="t-num"
+        style={{
+          fontSize: highlight ? 28 : 22,
+          marginTop: 4,
+          color: highlight ? "var(--accent)" : "var(--fg)",
+        }}
+      >
+        {entry.total_points.toLocaleString("es")}
+      </div>
+      <div
+        className="grid place-items-center"
+        style={{
+          marginTop: 12,
+          height,
+          borderRadius: "var(--r-md) var(--r-md) 0 0",
+          background: highlight
+            ? "linear-gradient(180deg, color-mix(in oklch, var(--accent) 35%, transparent), color-mix(in oklch, var(--accent) 15%, transparent))"
+            : entry.rank_position === 2
+              ? "color-mix(in oklch, var(--fg) 12%, transparent)"
+              : "color-mix(in oklch, var(--c-rose) 18%, transparent)",
+          border: highlight
+            ? "1px solid color-mix(in oklch, var(--accent) 40%, transparent)"
+            : undefined,
+        }}
+      >
+        <span
+          className="t-display-2xl"
+          style={{
+            fontSize: highlight ? 72 : entry.rank_position === 2 ? 56 : 48,
+            color: highlight
+              ? "var(--accent)"
+              : entry.rank_position === 2
+                ? "var(--fg-muted)"
+                : "color-mix(in oklch, var(--c-rose) 80%, var(--fg))",
+          }}
+        >
+          {entry.rank_position}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function IndividualView({
+  rows,
+  myUserId,
+}: {
+  rows: LeaderboardEntry[];
+  myUserId: string | null;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section className="scout-card" style={{ padding: 32, textAlign: "center" }}>
+        <div className="grid place-items-center" style={{ marginBottom: 14 }}>
+          <BadgeCircle color="purple" size={56}>
+            <ScoutIcon name="user" size={26} />
+          </BadgeCircle>
+        </div>
+        <h2 className="t-display-sm" style={{ margin: "0 0 6px" }}>
+          Aún no hay scouts en el ranking
+        </h2>
+        <p className="t-body-sm text-muted" style={{ maxWidth: 380, margin: "0 auto" }}>
+          Sé el primero en jugar y ponerle nombre al podio.
+        </p>
+      </section>
+    );
+  }
+
+  const maxPoints = rows[0]?.total_points || 1;
+
+  return (
+    <section className="scout-card" style={{ padding: 18 }}>
+      <div
+        className="t-overline"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "40px 56px 1fr 120px 100px",
+          gap: 12,
+          padding: "8px 12px",
+          color: "var(--fg-soft)",
+        }}
+      >
+        <div>#</div>
+        <div></div>
+        <div>Scout</div>
+        <div>Progreso</div>
+        <div style={{ textAlign: "right" }}>Puntos</div>
+      </div>
+      <div className="vstack" style={{ gap: 6 }}>
+        {rows.map((u) => {
+          const isYou = myUserId === u.user_id;
+          const color = colorOf(u.team_color);
+          return (
+            <div
+              key={u.user_id}
+              className="grid items-center"
+              style={{
+                gridTemplateColumns: "40px 56px 1fr 120px 100px",
+                gap: 12,
+                padding: "10px 12px",
+                borderRadius: "var(--r-md)",
+                background: isYou
+                  ? "color-mix(in oklch, var(--primary) 10%, transparent)"
+                  : u.rank_position === 1
+                    ? "color-mix(in oklch, var(--accent) 8%, transparent)"
+                    : "var(--surface)",
+                border: isYou
+                  ? "1px solid color-mix(in oklch, var(--primary) 30%, transparent)"
+                  : u.rank_position === 1
+                    ? "1px solid color-mix(in oklch, var(--accent) 30%, transparent)"
+                    : "1px solid transparent",
+              }}
+            >
+              <span
+                className="t-display-sm"
+                style={{
+                  color:
+                    u.rank_position <= 3 ? "var(--accent)" : "var(--fg-muted)",
+                  textAlign: "center",
+                }}
+              >
+                {u.rank_position}
+              </span>
+              <Avatar
+                name={u.display_name ?? u.username}
+                size={40}
+                color={color}
+                ring={isYou}
+              />
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  {u.display_name ?? u.username}
+                  {isYou && (
+                    <span className="chip" style={{ fontSize: 9 }}>
+                      Tú
+                    </span>
+                  )}
+                </div>
+                <div className="t-caption text-muted">
+                  @{u.username}
+                  {u.team_name && ` · ${u.team_name}`}
+                </div>
+              </div>
+              <XpBar
+                value={u.total_points}
+                max={maxPoints}
+                variant={u.rank_position === 1 ? "gold" : "primary"}
+              />
+              <span
+                className="t-num"
+                style={{
+                  fontSize: 18,
+                  textAlign: "right",
+                  color:
+                    u.rank_position === 1 ? "var(--accent)" : "var(--fg)",
+                }}
+              >
+                {u.total_points.toLocaleString("es")}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

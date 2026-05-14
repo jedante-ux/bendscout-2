@@ -16,9 +16,6 @@ const displayNameSchema = z
   .min(1, "Requerido")
   .max(48, "Máximo 48 caracteres");
 
-const avatarUrlSchema = z
-  .union([z.literal(""), z.string().url("URL inválida (debe empezar con https://)")]);
-
 const timezoneSchema = z
   .string()
   .max(48, "Máximo 48 caracteres")
@@ -29,7 +26,7 @@ export type ProfileActionResult =
   | {
       ok: false;
       error: string;
-      field?: "username" | "displayName" | "avatarUrl" | "timezone";
+      field?: "username" | "displayName" | "avatarFile" | "timezone";
     };
 
 export async function updateProfileAction(
@@ -44,7 +41,6 @@ export async function updateProfileAction(
 
   const username = String(formData.get("username") ?? "").trim();
   const displayName = String(formData.get("displayName") ?? "").trim();
-  const avatarUrl = String(formData.get("avatarUrl") ?? "").trim();
   const timezone = String(formData.get("timezone") ?? "").trim();
 
   const u = usernameSchema.safeParse(username);
@@ -54,10 +50,6 @@ export async function updateProfileAction(
   const d = displayNameSchema.safeParse(displayName);
   if (!d.success)
     return { ok: false, error: d.error.issues[0].message, field: "displayName" };
-
-  const a = avatarUrlSchema.safeParse(avatarUrl);
-  if (!a.success)
-    return { ok: false, error: a.error.issues[0].message, field: "avatarUrl" };
 
   const t = timezoneSchema.safeParse(timezone);
   if (!t.success)
@@ -90,7 +82,6 @@ export async function updateProfileAction(
   const updates: Record<string, string | null> = {
     username,
     display_name: displayName,
-    avatar_url: avatarUrl ? avatarUrl : null,
   };
   if (timezone) updates.timezone = timezone;
 
