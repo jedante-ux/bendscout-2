@@ -153,6 +153,42 @@ export const GAMES: GameDefinition[] = [
     status: "live",
     route: "/play/historia",
   },
+  {
+    key: "brujula",
+    title: "Brújula al Rumbo",
+    tagline:
+      "Gira la flecha al rumbo correcto antes que se acabe el tiempo.",
+    category: "orientation",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🧭",
+    imageSrc: "/icons/orientacion-mapas.png",
+    status: "live",
+    route: "/play/brujula",
+  },
+  {
+    key: "huellas",
+    title: "Caza de Huellas",
+    tagline:
+      "Toca solo las huellas del animal correcto. ¡Reflejos scout al máximo!",
+    category: "nature",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🐾",
+    imageSrc: "/icons/tarzan.png",
+    status: "live",
+    route: "/play/huellas",
+  },
+  {
+    key: "laberinto",
+    title: "Laberinto",
+    tagline:
+      "Traza con el dedo la salida del laberinto sin chocar con muros.",
+    category: "orientation",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🌀",
+    imageSrc: "/icons/orientacion-mapas.png",
+    status: "live",
+    route: "/play/laberinto",
+  },
 ];
 
 export function getGame(key: string) {

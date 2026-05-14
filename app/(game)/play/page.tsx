@@ -42,14 +42,13 @@ interface Game {
  */
 const GAMES: Game[] = [
   { id: "mem", gameKey: "memoria-visual", title: "Memoria Visual", sub: "Encuentra las parejas", color: "mint", emoji: "🍃", time: "1 min", href: "/play/memoria" },
-  { id: "lab", gameKey: "laberinto", title: "Laberinto", sub: "Encuentra la salida", color: "sky", emoji: "🧭", time: "2 min", href: "/play/laberinto" },
+  { id: "lab", gameKey: "laberinto", title: "Laberinto", sub: "Traza la salida con el dedo", color: "sky", emoji: "🌀", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/laberinto", isNew: true },
   { id: "cam", gameKey: "camino-seguro", title: "Camino Seguro", sub: "Cruza el río saltando", color: "purple", emoji: "🏃", time: "1 min", href: "/play/camino-seguro" },
   { id: "qz", gameKey: "preguntas", title: "Preguntas Scout", sub: "Pon a prueba lo que sabes", color: "gold", emoji: "📖", time: "2 min", href: "/play/preguntas" },
   { id: "ley", gameKey: "ley-scout", title: "Ley en Orden", sub: "Conecta cada artículo", color: "mint", emoji: "📜", time: "2 min", imageSrc: "/icons/fogata.png", href: "/play/ley-scout", isNew: true },
   { id: "tar", gameKey: "tarzan", title: "Pista de Tarzán", sub: "Salta y agáchate sin parar", color: "teal", emoji: "🌴", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/tarzan", isNew: true },
   { id: "knot", gameKey: "knot-rush", title: "Maestro Nudos", sub: "Identifica el nudo correcto", color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", isNew: true },
   { id: "recnud", gameKey: "recordando-nudos", title: "Recordando nudos", sub: "Empareja 18 nudos y amarres", color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", href: "/play/recordando-nudos", isNew: true },
-  { id: "morse", gameKey: "morse", title: "Código Morse", sub: "Descifra el mensaje", color: "rose", emoji: "📡", time: "2 min", locked: true },
   { id: "star", gameKey: "constelaciones", title: "Mapa Estelar", sub: "Identifica constelaciones", color: "purple", emoji: "✨", time: "1 min", href: "/play/constelaciones", isNew: true },
   { id: "first", gameKey: "first-response", title: "Primera Respuesta", sub: "Actúa rápido en cada emergencia", color: "rose", emoji: "⛑️", time: "1 min", imageSrc: "/icons/primeros-auxilios.png", href: "/play/primera-respuesta", isNew: true },
   { id: "sem", gameKey: "banderas-semaforas", title: "Banderas Semáforas", sub: "Lee el alfabeto del señalero", color: "gold", emoji: "🚩", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/banderas-semaforas", isNew: true },
@@ -57,6 +56,8 @@ const GAMES: Game[] = [
   { id: "mor", gameKey: "morse", title: "Código Morse", sub: "Escucha y descifra el patrón", color: "gold", emoji: "📡", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/morse", isNew: true },
   { id: "moch", gameKey: "mochila", title: "Mochila de Campamento", sub: "Swipea: llevar o dejar", color: "teal", emoji: "🎒", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/mochila", isNew: true },
   { id: "hist", gameKey: "historia", title: "Historia Scout", sub: "Ordena los hitos cronológicos", color: "orange", emoji: "📜", time: "1 min", imageSrc: "/icons/fogata.png", href: "/play/historia", isNew: true },
+  { id: "bru", gameKey: "brujula", title: "Brújula al Rumbo", sub: "Gira al rumbo correcto", color: "gold", emoji: "🧭", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/brujula", isNew: true },
+  { id: "hue", gameKey: "huellas", title: "Caza de Huellas", sub: "Toca solo el animal correcto", color: "purple", emoji: "🐾", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/huellas", isNew: true },
 ];
 
 async function getPlayedGameKeys(

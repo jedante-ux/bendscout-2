@@ -15,7 +15,7 @@ import { GameShell } from "@/components/scout/game-shell";
 import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
 import { TeamChat } from "@/components/scout/team-chat";
-import { LaberintoGame } from "@/components/games/laberinto-game";
+import { BrujulaGame } from "@/components/games/brujula-game";
 import { GameStartOverlay } from "@/components/games/game-start-overlay";
 import { ScoutIcon } from "@/components/scout/icon";
 import {
@@ -35,7 +35,7 @@ import type {
   StartAttemptResult,
 } from "@/types/database";
 
-const GAME_KEY = "laberinto";
+const GAME_KEY = "brujula";
 const ROUND_SECONDS = 60;
 
 type Phase =
@@ -59,15 +59,15 @@ function formatTime(seconds: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-export default function LaberintoPage() {
+export default function BrujulaPage() {
   return (
     <Suspense fallback={null}>
-      <LaberintoPageInner />
+      <BrujulaPageInner />
     </Suspense>
   );
 }
 
-function LaberintoPageInner() {
+function BrujulaPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSandbox = searchParams.get("sandbox") === "1";
@@ -101,9 +101,9 @@ function LaberintoPageInner() {
   const [, startTransition] = useTransition();
 
   const meta = getGame(GAME_KEY);
-  const fallbackTitle = "Laberinto";
+  const fallbackTitle = "Brújula al Rumbo";
   const fallbackTagline =
-    "Traza la ruta de la S a la E sin levantar el dedo ni chocar con muros.";
+    "Gira la flecha al rumbo correcto antes que se acabe el tiempo.";
 
   const beginAttempt = useCallback(() => {
     setPhase("loading");
@@ -346,7 +346,7 @@ function LaberintoPageInner() {
 
   return (
     <GameShell
-      title="LABERINTO"
+      title="BRÚJULA"
       level={headerLevel}
       time={formatTime(timeLeft)}
       points={score}
@@ -378,7 +378,7 @@ function LaberintoPageInner() {
       <div className="relative flex-1 py-2">
         {phase === "play" && (
           <>
-            <LaberintoGame
+            <BrujulaGame
               key={attemptCount}
               interactive={started && !paused && timeLeft > 0}
               timeLeftSeconds={timeLeft}
@@ -389,7 +389,7 @@ function LaberintoPageInner() {
             {!started && (
               <GameStartOverlay
                 onStart={() => setStarted(true)}
-                hint="Toca la S y arrastra el dedo hasta la E"
+                hint="Gira con el dedo, confirma cuando estés en el rumbo"
               />
             )}
           </>
@@ -539,7 +539,7 @@ function LoadingOverlay() {
           <ScoutIcon name="sparkle" size={22} className="text-primary-token" />
         </div>
         <p className="t-body-sm text-muted" style={{ marginTop: 12 }}>
-          Dibujando los senderos…
+          Calibrando la brújula…
         </p>
       </div>
     </Overlay>
@@ -608,7 +608,7 @@ function FinishOverlay({
         <h3 className="t-display-md" style={{ marginTop: 14 }}>
           {attempt?.kind === "practice"
             ? "¡Práctica completa!"
-            : "¡Salida encontrada!"}
+            : "¡Brújula afinada!"}
         </h3>
         <p className="t-body-sm text-muted" style={{ marginTop: 4 }}>
           {isSandbox

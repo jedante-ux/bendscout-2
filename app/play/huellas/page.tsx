@@ -15,7 +15,7 @@ import { GameShell } from "@/components/scout/game-shell";
 import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
 import { TeamChat } from "@/components/scout/team-chat";
-import { LaberintoGame } from "@/components/games/laberinto-game";
+import { HuellasGame } from "@/components/games/huellas-game";
 import { GameStartOverlay } from "@/components/games/game-start-overlay";
 import { ScoutIcon } from "@/components/scout/icon";
 import {
@@ -35,7 +35,7 @@ import type {
   StartAttemptResult,
 } from "@/types/database";
 
-const GAME_KEY = "laberinto";
+const GAME_KEY = "huellas";
 const ROUND_SECONDS = 60;
 
 type Phase =
@@ -59,15 +59,15 @@ function formatTime(seconds: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-export default function LaberintoPage() {
+export default function HuellasPage() {
   return (
     <Suspense fallback={null}>
-      <LaberintoPageInner />
+      <HuellasPageInner />
     </Suspense>
   );
 }
 
-function LaberintoPageInner() {
+function HuellasPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSandbox = searchParams.get("sandbox") === "1";
@@ -101,9 +101,9 @@ function LaberintoPageInner() {
   const [, startTransition] = useTransition();
 
   const meta = getGame(GAME_KEY);
-  const fallbackTitle = "Laberinto";
+  const fallbackTitle = "Caza de Huellas";
   const fallbackTagline =
-    "Traza la ruta de la S a la E sin levantar el dedo ni chocar con muros.";
+    "Toca solo las huellas del animal correcto antes que desaparezcan.";
 
   const beginAttempt = useCallback(() => {
     setPhase("loading");
@@ -346,7 +346,7 @@ function LaberintoPageInner() {
 
   return (
     <GameShell
-      title="LABERINTO"
+      title="HUELLAS"
       level={headerLevel}
       time={formatTime(timeLeft)}
       points={score}
@@ -378,7 +378,7 @@ function LaberintoPageInner() {
       <div className="relative flex-1 py-2">
         {phase === "play" && (
           <>
-            <LaberintoGame
+            <HuellasGame
               key={attemptCount}
               interactive={started && !paused && timeLeft > 0}
               timeLeftSeconds={timeLeft}
@@ -389,7 +389,7 @@ function LaberintoPageInner() {
             {!started && (
               <GameStartOverlay
                 onStart={() => setStarted(true)}
-                hint="Toca la S y arrastra el dedo hasta la E"
+                hint="Toca rápido — solo las huellas del animal correcto"
               />
             )}
           </>
@@ -539,7 +539,7 @@ function LoadingOverlay() {
           <ScoutIcon name="sparkle" size={22} className="text-primary-token" />
         </div>
         <p className="t-body-sm text-muted" style={{ marginTop: 12 }}>
-          Dibujando los senderos…
+          Rastreando el bosque…
         </p>
       </div>
     </Overlay>
@@ -608,7 +608,7 @@ function FinishOverlay({
         <h3 className="t-display-md" style={{ marginTop: 14 }}>
           {attempt?.kind === "practice"
             ? "¡Práctica completa!"
-            : "¡Salida encontrada!"}
+            : "¡Rastreador experto!"}
         </h3>
         <p className="t-body-sm text-muted" style={{ marginTop: 4 }}>
           {isSandbox
