@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { TARZAN_GAME } from "@/lib/games/runner/tarzan";
 
 type ObstacleKind = "rock" | "branch";
@@ -71,10 +71,12 @@ export function TarzanRunner({
     onGround: true,
   });
 
-  const [readyOverlay, setReadyOverlay] = useState(true);
-
   useEffect(() => {
     pausedRef.current = paused;
+    // Reset el delta cuando se sale de pausa para evitar saltos enormes.
+    if (!paused) {
+      lastTsRef.current = 0;
+    }
   }, [paused]);
 
   // ---------- Imperative API (jump / duck) ----------
@@ -284,7 +286,7 @@ export function TarzanRunner({
       const dt = Math.min(48, ts - lastTsRef.current); // ms; cap a 48ms para evitar saltos enormes
       lastTsRef.current = ts;
 
-      if (pausedRef.current || readyOverlay) {
+      if (pausedRef.current) {
         // Redibuja sin avanzar.
         draw();
         rafRef.current = requestAnimationFrame(frame);

@@ -14,6 +14,7 @@ const NAV_ITEMS: Array<{ href: string; label: string; icon: ScoutIconName }> = [
   { href: "/profile", label: "Perfil", icon: "user" },
   { href: "/missions", label: "Misiones", icon: "flag" },
   { href: "/play", label: "Minijuegos", icon: "gamepad" },
+  { href: "/sandbox", label: "Sandbox 🧪", icon: "sparkle" },
   { href: "/leaderboard", label: "Ranking", icon: "chart" },
   { href: "/trophies", label: "Trofeos", icon: "trophy" },
   { href: "/teams", label: "Mi patrulla", icon: "users" },

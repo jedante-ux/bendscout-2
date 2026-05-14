@@ -21,6 +21,7 @@ export const GAMES: GameDefinition[] = [
     category: "nature",
     difficulties: ["easy", "medium", "hard"],
     emoji: "🌴",
+    imageSrc: "/icons/tarzan.png",
     status: "live",
     route: "/play/tarzan",
   },

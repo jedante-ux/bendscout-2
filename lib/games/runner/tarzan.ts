@@ -1,58 +1,62 @@
 // Tunables del runner "Pista de Tarzán". Todas las unidades son píxeles
-// en el sistema de coordenadas LÓGICO del canvas (800 x 300). El canvas se
-// escala con CSS a su contenedor; el motor trabaja siempre en este sistema.
+// en el sistema de coordenadas LÓGICO del canvas (600 x 600, ratio 1:1).
+// El canvas se escala con CSS al contenedor; el motor trabaja siempre en
+// este sistema lógico.
 
 export const TARZAN_GAME = {
   // Mundo
   world: {
-    width: 800,
-    height: 300,
-    groundY: 250, // y del piso (los pies del corredor descansan acá)
+    width: 600,
+    height: 600,
+    groundY: 460, // y del piso (los pies del corredor descansan acá)
   },
 
   // Corredor
   runner: {
-    x: 110,
-    width: 44,
-    heightRun: 68,
-    heightDuck: 40,
-    gravity: 0.7,        // px/frame²
-    jumpImpulse: -14.5,  // px/frame (negativo = arriba)
-    duckFallBoost: 0.9,  // gravedad extra al estar agachado en el aire
+    x: 100,
+    width: 60,
+    heightRun: 110,
+    heightDuck: 65,
+    gravity: 0.85,       // px/frame²
+    jumpImpulse: -17,    // px/frame (negativo = arriba)
+    duckFallBoost: 1.1,  // gravedad extra al estar agachado en el aire
   },
 
   // Obstáculos: piedra (suelo, hay que SALTAR) y rama (alta, hay que AGACHARSE).
   obstacles: {
-    rock: { width: 36, height: 38 },
+    rock: { width: 52, height: 54 },
     branch: {
-      width: 80,
-      height: 24,
+      width: 130,
+      height: 32,
       // y del TOP del branch — pasa por encima del corredor parado pero
       // por debajo del corredor agachado.
-      topY: 162,
+      // Corredor parado: top y = 460 - 110 = 350.
+      // Corredor agachado: top y = 460 - 65 = 395.
+      // branch [360, 392] choca con parado y libra al agachado.
+      topY: 360,
     },
   },
 
   // Spawner
   spawn: {
-    initialIntervalFrames: 95, // ~1.6s a 60fps
-    minIntervalFrames: 38,     // ~0.63s — no más rápido que esto
-    intervalShrinkPerSec: 1.8, // cada segundo, el intervalo baja 1.8 frames
-    branchProbability: 0.4,    // chance de que el obstáculo sea rama (vs piedra)
+    initialIntervalFrames: 130, // ~2.16s a 60fps — arranque calmado
+    minIntervalFrames: 45,      // ~0.75s — tope de dificultad
+    intervalShrinkPerSec: 2.2,  // cada segundo, el intervalo baja N frames
+    branchProbability: 0.4,     // chance de que el obstáculo sea rama (vs piedra)
   },
 
   // Velocidad
   speed: {
-    initial: 6.0,         // px/frame
-    max: 14.0,            // tope
-    accelPerSec: 0.18,    // cuánto sube la velocidad por segundo
+    initial: 6.0,
+    max: 14.0,
+    accelPerSec: 0.22,
   },
 
   // Puntaje
   scoring: {
-    pointsPerSec: 12,           // base de puntos por segundo de supervivencia
-    speedMultiplier: 0.18,      // bonus extra por velocidad (puntos/seg × speed)
-    obstacleClearedBonus: 25,   // bonus al librar un obstáculo
+    pointsPerSec: 12,
+    speedMultiplier: 0.18,
+    obstacleClearedBonus: 25,
   },
 } as const;
 

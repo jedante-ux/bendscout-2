@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,7 +10,7 @@ import {
   useTransition,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GameShell } from "@/components/scout/game-shell";
 import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
@@ -59,9 +60,23 @@ function formatTime(seconds: number): string {
 }
 
 export default function TarzanPage() {
+  return (
+    <Suspense fallback={null}>
+      <TarzanPageInner />
+    </Suspense>
+  );
+}
+
+function TarzanPageInner() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("ready");
-  const [attempt, setAttempt] = useState<ActiveAttempt | null>(null);
+  const searchParams = useSearchParams();
+  const isSandbox = searchParams.get("sandbox") === "1";
+  const [phase, setPhase] = useState<Phase>(() =>
+    isSandbox ? "play" : "ready",
+  );
+  const [attempt, setAttempt] = useState<ActiveAttempt | null>(() =>
+    isSandbox ? { sessionId: "sandbox", kind: "practice", no: 1 } : null,
+  );
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<FinishAttemptResult | null>(
     null,
@@ -88,6 +103,14 @@ export default function TarzanPage() {
     setPaused(false);
     setSubmitResult(null);
     startedAtRef.current = Date.now();
+
+    if (isSandbox) {
+      // Salta el RPC: fake attempt, no toca daily_plays ni jamboree_scores.
+      setAttempt({ sessionId: "sandbox", kind: "practice", no: 1 });
+      setPhase("play");
+      setStarting(false);
+      return;
+    }
 
     startTransition(async () => {
       let result: StartAttemptResult;
@@ -120,7 +143,7 @@ export default function TarzanPage() {
       setPhase("play");
       setStarting(false);
     });
-  }, [router]);
+  }, [router, isSandbox]);
 
   const refreshIntroData = useCallback(async () => {
     const [status, scores, hist] = await Promise.all([
@@ -132,6 +155,7 @@ export default function TarzanPage() {
   }, []);
 
   useEffect(() => {
+    if (isSandbox) return; // No cargamos intro data en sandbox.
     let cancelled = false;
     refreshIntroData()
       .then(({ status, scores, hist }) => {
@@ -149,7 +173,7 @@ export default function TarzanPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, refreshIntroData]);
+  }, [router, refreshIntroData, isSandbox]);
 
   // Cronómetro mientras se juega.
   useEffect(() => {
@@ -161,6 +185,15 @@ export default function TarzanPage() {
   const submitScore = useCallback(
     (finalScore: number) => {
       if (!attempt) return;
+
+      if (isSandbox) {
+        // No persistimos nada: solo mostramos el resultado.
+        setScore(finalScore);
+        setSubmitResult(null);
+        setPhase("done");
+        return;
+      }
+
       setPhase("submitting");
       const durationMs = Date.now() - startedAtRef.current;
 
@@ -180,7 +213,7 @@ export default function TarzanPage() {
         }
       });
     },
-    [attempt],
+    [attempt, isSandbox],
   );
 
   const handleGameOver = useCallback(
@@ -193,6 +226,10 @@ export default function TarzanPage() {
 
   const handleRetry = () => beginAttempt();
   const handleBackToIntro = useCallback(() => {
+    if (isSandbox) {
+      router.push("/sandbox");
+      return;
+    }
     setAttempt(null);
     setSubmitResult(null);
     setBlockedReason(null);
@@ -204,7 +241,7 @@ export default function TarzanPage() {
         setHistory(hist);
       })
       .catch((err) => console.error(err));
-  }, [refreshIntroData]);
+  }, [refreshIntroData, isSandbox, router]);
 
   const headerLevel = useMemo(() => {
     if (phase === "loading") return "Preparando…";
@@ -312,6 +349,7 @@ export default function TarzanPage() {
             onRetry={handleRetry}
             result={submitResult}
             attempt={attempt}
+            isSandbox={isSandbox}
           />
         )}
 
@@ -531,15 +569,18 @@ function FinishOverlay({
   onRetry,
   result,
   attempt,
+  isSandbox,
 }: {
   score: number;
   elapsed: number;
   onRetry: () => void;
   result: FinishAttemptResult | null;
   attempt: ActiveAttempt | null;
+  isSandbox: boolean;
 }) {
-  const wasScoring = attempt?.kind === "scoring";
+  const wasScoring = attempt?.kind === "scoring" && !isSandbox;
   const showRetryButton =
+    isSandbox ||
     attempt?.kind === "practice" ||
     (attempt?.kind === "scoring" && attempt.no === 1);
 
@@ -561,9 +602,11 @@ function FinishOverlay({
           ¡Te atrapó la jungla!
         </h3>
         <p className="t-body-sm text-muted" style={{ marginTop: 4 }}>
-          {attempt?.kind === "practice"
-            ? "Suma 20 puntos por la práctica a tu semana."
-            : "Tu mejor de dos intentos cuenta para el Jamboree."}
+          {isSandbox
+            ? "Modo prueba: nada se guarda al Jamboree."
+            : attempt?.kind === "practice"
+              ? "Suma 20 puntos por la práctica a tu semana."
+              : "Tu mejor de dos intentos cuenta para el Jamboree."}
         </p>
 
         <div className="grid grid-cols-2 gap-2" style={{ marginTop: 16 }}>
@@ -593,11 +636,15 @@ function FinishOverlay({
               style={{ flex: 1 }}
             >
               <ScoutIcon name="history" size={14} />
-              {attempt?.kind === "practice" ? "Jugar puntuable" : "Intento 2"}
+              {isSandbox
+                ? "Otra vez"
+                : attempt?.kind === "practice"
+                  ? "Jugar puntuable"
+                  : "Intento 2"}
             </button>
           )}
           <Link
-            href="/play"
+            href={isSandbox ? "/sandbox" : "/play"}
             className="btn btn-primary btn-lg"
             style={{ flex: 1 }}
           >

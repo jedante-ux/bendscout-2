@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GameShell } from "@/components/scout/game-shell";
 import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
@@ -56,9 +56,23 @@ function formatTime(seconds: number): string {
 }
 
 export default function LeyScoutPage() {
+  return (
+    <Suspense fallback={null}>
+      <LeyScoutPageInner />
+    </Suspense>
+  );
+}
+
+function LeyScoutPageInner() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("ready");
-  const [attempt, setAttempt] = useState<ActiveAttempt | null>(null);
+  const searchParams = useSearchParams();
+  const isSandbox = searchParams.get("sandbox") === "1";
+  const [phase, setPhase] = useState<Phase>(() =>
+    isSandbox ? "play" : "ready",
+  );
+  const [attempt, setAttempt] = useState<ActiveAttempt | null>(() =>
+    isSandbox ? { sessionId: "sandbox", kind: "practice", no: 1 } : null,
+  );
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<FinishAttemptResult | null>(
     null,
@@ -73,7 +87,7 @@ export default function LeyScoutPage() {
   const [livesUsed, setLivesUsed] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
-  const startedAtRef = useRef<number>(Date.now());
+  const startedAtRef = useRef<number>(0);
   const [, startTransition] = useTransition();
 
   const round = LEY_SCOUT_ROUNDS[roundIndex];
@@ -91,6 +105,13 @@ export default function LeyScoutPage() {
     setPaused(false);
     setSubmitResult(null);
     startedAtRef.current = Date.now();
+
+    if (isSandbox) {
+      setAttempt({ sessionId: "sandbox", kind: "practice", no: 1 });
+      setPhase("play");
+      setStarting(false);
+      return;
+    }
 
     startTransition(async () => {
       let result: StartAttemptResult;
@@ -123,7 +144,7 @@ export default function LeyScoutPage() {
       setPhase("play");
       setStarting(false);
     });
-  }, [router]);
+  }, [router, isSandbox]);
 
   const refreshIntroData = useCallback(async () => {
     const [status, scores, hist] = await Promise.all([
@@ -136,6 +157,7 @@ export default function LeyScoutPage() {
 
   // Mount: fetch day status + scores + history (no auto-start).
   useEffect(() => {
+    if (isSandbox) return;
     let cancelled = false;
     refreshIntroData()
       .then(({ status, scores, hist }) => {
@@ -166,7 +188,7 @@ export default function LeyScoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, refreshIntroData]);
+  }, [router, refreshIntroData, isSandbox]);
 
   // Tick timer while playing.
   useEffect(() => {
@@ -178,6 +200,14 @@ export default function LeyScoutPage() {
   const submitScore = useCallback(
     (finalScore: number, outcome: "done" | "fail") => {
       if (!attempt) return;
+
+      if (isSandbox) {
+        setScore(finalScore);
+        setSubmitResult(null);
+        setPhase(outcome);
+        return;
+      }
+
       setPhase("submitting");
       const durationMs = Date.now() - startedAtRef.current;
 
@@ -197,7 +227,7 @@ export default function LeyScoutPage() {
         }
       });
     },
-    [attempt],
+    [attempt, isSandbox],
   );
 
   const handleMatch = () => setScore((s) => s + MATCH_BONUS);
@@ -234,6 +264,10 @@ export default function LeyScoutPage() {
 
   const handleRetry = () => beginAttempt();
   const handleBackToIntro = useCallback(() => {
+    if (isSandbox) {
+      router.push("/sandbox");
+      return;
+    }
     setAttempt(null);
     setSubmitResult(null);
     setBlockedReason(null);
@@ -246,7 +280,7 @@ export default function LeyScoutPage() {
         setHistory(hist);
       })
       .catch((err) => console.error(err));
-  }, [refreshIntroData]);
+  }, [refreshIntroData, isSandbox, router]);
 
   const headerLevel = useMemo(() => {
     if (phase === "loading") return "Preparando…";
@@ -359,6 +393,7 @@ export default function LeyScoutPage() {
             variant="win"
             result={submitResult}
             attempt={attempt}
+            isSandbox={isSandbox}
           />
         )}
 
@@ -371,6 +406,7 @@ export default function LeyScoutPage() {
             variant="lose"
             result={submitResult}
             attempt={attempt}
+            isSandbox={isSandbox}
           />
         )}
 
@@ -599,6 +635,7 @@ function FinishOverlay({
   variant,
   result,
   attempt,
+  isSandbox,
 }: {
   score: number;
   livesLeft: number;
@@ -607,10 +644,12 @@ function FinishOverlay({
   variant: "win" | "lose";
   result: FinishAttemptResult | null;
   attempt: ActiveAttempt | null;
+  isSandbox: boolean;
 }) {
   const isWin = variant === "win";
-  const wasScoring = attempt?.kind === "scoring";
+  const wasScoring = attempt?.kind === "scoring" && !isSandbox;
   const showRetryButton =
+    isSandbox ||
     attempt?.kind === "practice" ||
     (attempt?.kind === "scoring" && attempt.no === 1);
 
@@ -638,11 +677,13 @@ function FinishOverlay({
             : "Sin vidas"}
         </h3>
         <p className="t-body-sm text-muted" style={{ marginTop: 4 }}>
-          {attempt?.kind === "practice"
-            ? "Suma 20 puntos por la práctica a tu semana."
-            : isWin
-              ? "Tu mejor de dos intentos cuenta para el Jamboree."
-              : "Inténtalo de nuevo, tu patrulla cuenta contigo."}
+          {isSandbox
+            ? "Modo prueba: nada se guarda al Jamboree."
+            : attempt?.kind === "practice"
+              ? "Suma 20 puntos por la práctica a tu semana."
+              : isWin
+                ? "Tu mejor de dos intentos cuenta para el Jamboree."
+                : "Inténtalo de nuevo, tu patrulla cuenta contigo."}
         </p>
 
         <div className="grid grid-cols-3 gap-2" style={{ marginTop: 16 }}>
@@ -673,11 +714,15 @@ function FinishOverlay({
               style={{ flex: 1 }}
             >
               <ScoutIcon name="history" size={14} />
-              {attempt?.kind === "practice" ? "Jugar puntuable" : "Intento 2"}
+              {isSandbox
+                ? "Otra vez"
+                : attempt?.kind === "practice"
+                  ? "Jugar puntuable"
+                  : "Intento 2"}
             </button>
           )}
           <Link
-            href="/play"
+            href={isSandbox ? "/sandbox" : "/play"}
             className="btn btn-primary btn-lg"
             style={{ flex: 1 }}
           >
