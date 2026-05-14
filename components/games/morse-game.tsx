@@ -126,7 +126,7 @@ export function MorseGame({
   const [playing, setPlaying] = useState(false);
   const lockedRef = useRef(false);
   const playerRef = useRef<MorsePlayer | null>(null);
-  if (!playerRef.current) playerRef.current = new MorsePlayer();
+  if (playerRef.current == null) playerRef.current = new MorsePlayer();
 
   const advance = useCallback(() => {
     setRound((prev) => buildRound(MORSE_TEACHING_POOL, prev.letter.letter));

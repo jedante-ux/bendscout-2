@@ -117,6 +117,42 @@ export const GAMES: GameDefinition[] = [
     status: "live",
     route: "/play/botiquin",
   },
+  {
+    key: "morse",
+    title: "Código Morse",
+    tagline:
+      "Escucha el patrón de puntos y rayas y elige la letra. ¡Sube el volumen!",
+    category: "orientation",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "📡",
+    imageSrc: "/icons/orientacion-mapas.png",
+    status: "live",
+    route: "/play/morse",
+  },
+  {
+    key: "mochila",
+    title: "Mochila de Campamento",
+    tagline:
+      "Swipea: derecha para llevar, izquierda para dejar. ¡Arma la mochila perfecta!",
+    category: "nature",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🎒",
+    imageSrc: "/icons/tarzan.png",
+    status: "live",
+    route: "/play/mochila",
+  },
+  {
+    key: "historia",
+    title: "Historia Scout",
+    tagline:
+      "Ordena los hitos del Movimiento Scout del más antiguo al más reciente.",
+    category: "history",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "📜",
+    imageSrc: "/icons/fogata.png",
+    status: "live",
+    route: "/play/historia",
+  },
 ];
 
 export function getGame(key: string) {

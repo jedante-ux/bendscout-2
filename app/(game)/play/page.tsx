@@ -54,6 +54,9 @@ const GAMES: Game[] = [
   { id: "first", gameKey: "first-response", title: "Primera Respuesta", sub: "Actúa rápido en cada emergencia", color: "rose", emoji: "⛑️", time: "1 min", imageSrc: "/icons/primeros-auxilios.png", href: "/play/primera-respuesta", isNew: true },
   { id: "sem", gameKey: "banderas-semaforas", title: "Banderas Semáforas", sub: "Lee el alfabeto del señalero", color: "gold", emoji: "🚩", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/banderas-semaforas", isNew: true },
   { id: "bot", gameKey: "botiquin", title: "Botiquín Express", sub: "Arrastra el ítem al paciente", color: "rose", emoji: "🩹", time: "1 min", imageSrc: "/icons/primeros-auxilios.png", href: "/play/botiquin", isNew: true },
+  { id: "mor", gameKey: "morse", title: "Código Morse", sub: "Escucha y descifra el patrón", color: "gold", emoji: "📡", time: "1 min", imageSrc: "/icons/orientacion-mapas.png", href: "/play/morse", isNew: true },
+  { id: "moch", gameKey: "mochila", title: "Mochila de Campamento", sub: "Swipea: llevar o dejar", color: "teal", emoji: "🎒", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/mochila", isNew: true },
+  { id: "hist", gameKey: "historia", title: "Historia Scout", sub: "Ordena los hitos cronológicos", color: "orange", emoji: "📜", time: "1 min", imageSrc: "/icons/fogata.png", href: "/play/historia", isNew: true },
 ];
 
 async function getPlayedGameKeys(
