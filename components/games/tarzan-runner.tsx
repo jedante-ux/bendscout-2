@@ -234,6 +234,18 @@ export function TarzanRunner({
       snakeImgLoaded = true;
     };
 
+    // Pájaro: obstáculo alto (sustituye a "branch"). Recortado al alpha
+    // como los demás sprites; aspect ratio se conserva al dibujar.
+    const birdImg = new window.Image();
+    birdImg.src = "/icons/pajaro.png";
+    let birdImgLoaded = false;
+    let birdCrop = { sx: 0, sy: 0, sw: 1, sh: 1, aspect: 3 };
+    birdImg.onload = () => {
+      const b = computeAlphaCrop(birdImg);
+      birdCrop = { ...b, aspect: b.sw / b.sh };
+      birdImgLoaded = true;
+    };
+
     // Nubes: dos sprites alternados para el parallax del cielo.
     const cloud1 = new window.Image();
     cloud1.src = "/icons/nube1.png";
@@ -402,14 +414,31 @@ export function TarzanRunner({
             ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
           }
         } else {
-          // Branch: tronco horizontal con hojas.
-          ctx.fillStyle = "#5a3a1f";
-          ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
-          ctx.fillStyle = "#7bb04a";
-          ctx.beginPath();
-          ctx.ellipse(ob.x + 10, ob.y + ob.height / 2, 14, 12, 0, 0, Math.PI * 2);
-          ctx.ellipse(ob.x + ob.width - 10, ob.y + ob.height / 2, 14, 12, 0, 0, Math.PI * 2);
-          ctx.fill();
+          // Pájaro: obstáculo alto. La hitbox del branch es delgada (32px)
+          // pero el sprite se renderiza más alto y centrado para que se vea
+          // bien sin afectar la colisión (la hitbox sigue siendo ob.* tal cual).
+          if (birdImgLoaded) {
+            const drawH = ob.height * 1.9; // ~60px visible
+            const drawW = drawH * birdCrop.aspect;
+            const drawX = ob.x + (ob.width - drawW) / 2;
+            // Centrado verticalmente en la hitbox del branch.
+            const drawY = ob.y + (ob.height - drawH) / 2;
+            ctx.drawImage(
+              birdImg,
+              birdCrop.sx,
+              birdCrop.sy,
+              birdCrop.sw,
+              birdCrop.sh,
+              drawX,
+              drawY,
+              drawW,
+              drawH,
+            );
+          } else {
+            // Fallback marrón hasta que cargue.
+            ctx.fillStyle = "#5a3a1f";
+            ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+          }
         }
       }
 
