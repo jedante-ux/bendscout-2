@@ -15,6 +15,8 @@ interface DailyPickWidgetProps {
   teamId: string | null;
   /** Today's pick if already chosen. */
   pick: DailyPick | null;
+  /** game_keys que la patrulla ya tuvo esta semana; se excluyen de la ruleta. */
+  excludeKeys?: string[];
   /** UI variant. "hero" for big card with image, "compact" for a small CTA row. */
   variant?: "hero" | "compact";
 }
@@ -23,6 +25,7 @@ export function DailyPickWidget({
   games,
   teamId,
   pick,
+  excludeKeys = [],
   variant = "hero",
 }: DailyPickWidgetProps) {
   const [open, setOpen] = useState(false);
@@ -48,6 +51,7 @@ export function DailyPickWidget({
         onClose={() => setOpen(false)}
         teamId={teamId}
         games={games}
+        excludeKeys={excludeKeys}
       />
     </>
   );

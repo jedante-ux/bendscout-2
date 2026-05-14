@@ -472,8 +472,11 @@ export function TarzanRunner({
         : TARZAN_GAME.runner.heightRun;
       const drawW = activeLoaded ? drawH * activeCrop.aspect : rw;
       const drawX = rx + (rw - drawW) / 2;
-      // Pies siempre apoyados en el suelo, independiente de la hitbox.
-      const drawY = TARZAN_GAME.world.groundY - drawH;
+      // Anclar el sprite por su BOTTOM al fondo de la hitbox (r.y + rh)
+      // para que (a) suba/baje con el salto físico (r.y cambia en el aire)
+      // y (b) cuando el sprite es más alto que la hitbox (ej. dash), la
+      // diferencia sobresalga HACIA ARRIBA sin despegar los pies del suelo.
+      const drawY = r.y + rh - drawH;
 
       // Sombra primero (bajo el personaje).
       ctx.fillStyle = "rgba(0,0,0,0.25)";

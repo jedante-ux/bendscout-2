@@ -7,11 +7,11 @@ import { BadgeCircle } from "@/components/scout/badge-circle";
 import { Shield } from "@/components/scout/shield";
 import { ScoutIcon, type ScoutIconName } from "@/components/scout/icon";
 import { getAuthState } from "@/lib/auth/session";
-import { getUserStats, getRecentSessions } from "@/lib/games/queries";
+import { getUserStats, getRecentSessions, getActiveJamboree } from "@/lib/games/queries";
 import { getUserTeam } from "@/lib/teams/queries";
 import { getActiveMissions } from "@/lib/missions/queries";
 import { GAMES, getGame } from "@/lib/games/registry";
-import { getDailyPick } from "@/lib/games/daily";
+import { getDailyPick, getWeeklyPickedKeys } from "@/lib/games/daily";
 import { DailyPickWidget } from "@/components/scout/daily-pick-widget";
 import { getUserInsignias, countUnlocked } from "@/lib/insignias/queries";
 
@@ -49,6 +49,9 @@ export default async function DashboardPage() {
     ? await getUserTeam(auth.userId)
     : null;
   const dailyPick = team ? await getDailyPick(team.id) : null;
+  const jamboree = await getActiveJamboree();
+  const weeklyPicked =
+    team && jamboree ? await getWeeklyPickedKeys(team.id, jamboree.id) : new Set<string>();
   const allMissions = auth.authenticated && auth.userId
     ? await getActiveMissions(auth.userId)
     : null;
@@ -83,6 +86,7 @@ export default async function DashboardPage() {
           games={GAMES}
           teamId={team?.id ?? null}
           pick={dailyPick}
+          excludeKeys={[...weeklyPicked]}
           variant="hero"
         />
       </div>

@@ -14,6 +14,24 @@ export interface DailyPick {
   pickedAt: string;
 }
 
+/**
+ * Lee los game_keys que la patrulla ya tuvo asignados durante la temporada activa.
+ * Se usa para excluirlos de la ruleta (no se repite el mismo juego en la semana).
+ */
+export async function getWeeklyPickedKeys(
+  teamId: string,
+  jamboreeId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("daily_picks")
+    .select("game_key")
+    .eq("team_id", teamId)
+    .eq("jamboree_id", jamboreeId);
+  if (!data) return new Set();
+  return new Set(data.map((r) => (r as { game_key: string }).game_key));
+}
+
 /** Lee el pick de hoy para la patrulla del usuario. null = nadie ha disparado la ruleta. */
 export async function getDailyPick(teamId: string): Promise<DailyPick | null> {
   const supabase = await createClient();
@@ -64,6 +82,21 @@ export async function spinDailyPick(
   } = await supabase.auth.getUser();
   if (!user) {
     return { ok: false, error: "unauthenticated" };
+  }
+
+  // Defense in depth: bloquear repeticiones de juego dentro del jamboree.
+  const { data: jamboree } = await supabase.rpc("ensure_active_jamboree");
+  const jamRow = Array.isArray(jamboree) ? jamboree[0] : jamboree;
+  if (jamRow?.id) {
+    const { data: prior } = await supabase
+      .from("daily_picks")
+      .select("game_key")
+      .eq("team_id", teamId)
+      .eq("jamboree_id", jamRow.id);
+    const usedKeys = new Set((prior ?? []).map((r) => (r as { game_key: string }).game_key));
+    if (usedKeys.has(gameKey)) {
+      return { ok: false, error: "game_already_played_this_week" };
+    }
   }
 
   const { data, error } = await supabase.rpc("claim_daily_pick", {

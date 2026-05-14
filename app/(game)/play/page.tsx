@@ -7,7 +7,7 @@ import { getAuthState } from "@/lib/auth/session";
 import { getActiveJamboree } from "@/lib/games/queries";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTeam } from "@/lib/teams/queries";
-import { getDailyPick } from "@/lib/games/daily";
+import { getDailyPick, getWeeklyPickedKeys } from "@/lib/games/daily";
 import { GAMES as REGISTRY_GAMES } from "@/lib/games/registry";
 import { DailyPickWidget } from "@/components/scout/daily-pick-widget";
 
@@ -75,6 +75,10 @@ export default async function PlayPage() {
   const team =
     auth.authenticated && auth.userId ? await getUserTeam(auth.userId) : null;
   const dailyPick = team ? await getDailyPick(team.id) : null;
+  const weeklyPicked =
+    team && jamboree
+      ? await getWeeklyPickedKeys(team.id, jamboree.id)
+      : new Set<string>();
 
   const playedKeys =
     auth.authenticated && auth.userId && jamboree
@@ -108,6 +112,7 @@ export default async function PlayPage() {
           games={REGISTRY_GAMES}
           teamId={team?.id ?? null}
           pick={dailyPick}
+          excludeKeys={[...weeklyPicked]}
           variant="hero"
         />
 

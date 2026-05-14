@@ -15,8 +15,11 @@ import {
 
 const SLOT_HEIGHT = 96; // px per game card in the reel
 const VISIBLE_SLOTS = 3; // slots visible at once inside the frame
-const REEL_COPIES = 12; // how many times we repeat the game list (the spinning effect)
-const SPIN_MS = 4200;
+const REEL_COPIES = 18; // how many times we repeat the game list (the spinning effect)
+const FAST_SPIN_SPEED = 1600; // px/sec during the pre-spin loop
+const MIN_FAST_SPIN_MS = 700; // minimum time the fast spin runs before deceleration
+const DECEL_MS = 2400; // smooth deceleration to the winner
+const REDIRECT_COUNTDOWN = 2; // seconds before auto-redirect to the chosen game
 
 /* ---------- Component ---------- */
 
@@ -26,20 +29,23 @@ interface RouletteModalProps {
   teamId: string;
   /** All games to display visually in the reel. */
   games: GameDefinition[];
+  /** game_keys already picked this jamboree week; excluded from the roulette. */
+  excludeKeys?: string[];
 }
 
 type Phase =
   | "idle"
   | "spinning"
-  | "settling"
   | "done"
-  | "error";
+  | "error"
+  | "empty";
 
 export function RouletteModal({
   open,
   onClose,
   teamId,
   games,
+  excludeKeys = [],
 }: RouletteModalProps) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -47,41 +53,54 @@ export function RouletteModal({
   const [result, setResult] = useState<SpinDailyPickResult | null>(null);
   const [isPending, startTransition] = useTransition();
   const reelRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
   const redirectTimerRef = useRef<number | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const liveGames = useMemo(
-    () => games.filter((g) => g.status === "live" && g.route),
-    [games],
+  // Solo entran a la ruleta los live con route, excluyendo los ya elegidos esta semana.
+  const excludeSet = useMemo(() => new Set(excludeKeys), [excludeKeys]);
+  const eligibleGames = useMemo(
+    () =>
+      games.filter(
+        (g) => g.status === "live" && g.route && !excludeSet.has(g.key),
+      ),
+    [games, excludeSet],
   );
+
+  // El reel visual incluye también los excluidos en gris, para que se note
+  // que existen pero ya fueron jugados. Si no hay elegibles, mostramos estado vacío.
+  const reelGames = useMemo(() => {
+    const live = games.filter((g) => g.status === "live" && g.route);
+    return live;
+  }, [games]);
 
   // Reset state when modal opens fresh.
   useEffect(() => {
-    if (open && phase === "done") {
-      // Keep done state visible if user reopens — but normally closed afterward.
+    if (!open) return;
+    if (eligibleGames.length === 0) {
+      setPhase("empty");
       return;
     }
-    if (open) {
-      setPhase("idle");
-      setPickedKey(null);
-      setResult(null);
-      setCountdown(null);
-      if (redirectTimerRef.current) {
-        window.clearInterval(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-      if (reelRef.current) {
-        reelRef.current.style.transition = "none";
-        reelRef.current.style.transform = "translateY(0px)";
-      }
+    setPhase("idle");
+    setPickedKey(null);
+    setResult(null);
+    setCountdown(null);
+    stopFastSpin();
+    if (redirectTimerRef.current) {
+      window.clearInterval(redirectTimerRef.current);
+      redirectTimerRef.current = null;
     }
-  }, [open, phase]);
+    if (reelRef.current) {
+      reelRef.current.style.transition = "none";
+      reelRef.current.style.transform = "translateY(0px)";
+    }
+  }, [open, eligibleGames.length]);
 
-  // Close on Escape.
+  // Close on Escape (solo si no estamos girando).
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && phase !== "spinning" && phase !== "settling") {
+      if (e.key === "Escape" && phase !== "spinning") {
         onClose();
       }
     };
@@ -89,9 +108,10 @@ export function RouletteModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, phase, onClose]);
 
-  // Cleanup redirect timer when component unmounts.
+  // Cleanup on unmount.
   useEffect(() => {
     return () => {
+      stopFastSpin();
       if (redirectTimerRef.current) {
         window.clearInterval(redirectTimerRef.current);
         redirectTimerRef.current = null;
@@ -99,64 +119,100 @@ export function RouletteModal({
     };
   }, []);
 
+  const stopFastSpin = () => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
   const handleSpin = () => {
     if (phase !== "idle") return;
-    if (liveGames.length === 0) return;
+    if (eligibleGames.length === 0) {
+      setPhase("empty");
+      return;
+    }
 
     setPhase("spinning");
-    const candidate = liveGames[Math.floor(Math.random() * liveGames.length)];
+    const candidate =
+      eligibleGames[Math.floor(Math.random() * eligibleGames.length)];
+
+    // Pre-spin: arranca un loop rápido inmediatamente para feedback visual.
+    const reelHeight = reelGames.length * SLOT_HEIGHT;
+    const spinStart = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - spinStart;
+      const offset = -((elapsed / 1000) * FAST_SPIN_SPEED) % reelHeight;
+      if (reelRef.current) {
+        reelRef.current.style.transition = "none";
+        reelRef.current.style.transform = `translateY(${offset}px)`;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
 
     startTransition(async () => {
+      const startedAt = performance.now();
       const res = await spinDailyPick(teamId, candidate.key);
       setResult(res);
 
-      if (!res.ok || !res.pick) {
-        setPhase("error");
-        return;
-      }
+      const elapsedNow = performance.now() - startedAt;
+      const waitMore = Math.max(0, MIN_FAST_SPIN_MS - elapsedNow);
 
-      const winnerKey = res.pick.gameKey;
-      setPickedKey(winnerKey);
-
-      // Compute final offset so the winner card lands centered in the frame.
-      // Reel is `REEL_COPIES` copies of `liveGames`. We pick a copy near the end.
-      const winnerIndex = liveGames.findIndex((g) => g.key === winnerKey);
-      const safeIndex = winnerIndex === -1 ? 0 : winnerIndex;
-      // Land in the second-to-last copy so user sees a few "wraps" before stop.
-      const landingCopy = REEL_COPIES - 2;
-      const absoluteIndex = landingCopy * liveGames.length + safeIndex;
-      // Center the chosen card in the frame (frame is 3 slots tall).
-      const centerOffset = Math.floor(VISIBLE_SLOTS / 2) * SLOT_HEIGHT;
-      const targetY = -(absoluteIndex * SLOT_HEIGHT - centerOffset);
-
-      // Trigger animation
-      requestAnimationFrame(() => {
-        if (!reelRef.current) return;
-        reelRef.current.style.transition = `transform ${SPIN_MS}ms cubic-bezier(0.16, 0.86, 0.2, 1)`;
-        reelRef.current.style.transform = `translateY(${targetY}px)`;
-      });
-
-      // After animation completes, mark done and start countdown to redirect.
       window.setTimeout(() => {
-        setPhase("done");
-        const targetGame = liveGames.find((g) => g.key === winnerKey);
-        const href = targetGame?.route ?? "/play";
-        setCountdown(3);
-        redirectTimerRef.current = window.setInterval(() => {
-          setCountdown((prev) => {
-            if (prev === null) return null;
-            if (prev <= 1) {
-              if (redirectTimerRef.current) {
-                window.clearInterval(redirectTimerRef.current);
-                redirectTimerRef.current = null;
+        stopFastSpin();
+
+        if (!res.ok || !res.pick) {
+          setPhase("error");
+          if (reelRef.current) {
+            reelRef.current.style.transition = "transform 250ms ease-out";
+            reelRef.current.style.transform = "translateY(0px)";
+          }
+          return;
+        }
+
+        const winnerKey = res.pick.gameKey;
+        setPickedKey(winnerKey);
+
+        // Land the winner centered in the frame. Tomamos la copia del reel
+        // cercana al final para que se vea recorrido, pero arrancamos desde
+        // la posición actual (pre-spin) suavizando con cubic-bezier.
+        const winnerIndex = reelGames.findIndex((g) => g.key === winnerKey);
+        const safeIndex = winnerIndex === -1 ? 0 : winnerIndex;
+        const landingCopy = REEL_COPIES - 3;
+        const absoluteIndex = landingCopy * reelGames.length + safeIndex;
+        const centerOffset = Math.floor(VISIBLE_SLOTS / 2) * SLOT_HEIGHT;
+        const targetY = -(absoluteIndex * SLOT_HEIGHT - centerOffset);
+
+        if (reelRef.current) {
+          // Forzamos reflow para que la transición a target se vea continua.
+          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+          reelRef.current.getBoundingClientRect();
+          reelRef.current.style.transition = `transform ${DECEL_MS}ms cubic-bezier(0.16, 0.86, 0.2, 1)`;
+          reelRef.current.style.transform = `translateY(${targetY}px)`;
+        }
+
+        window.setTimeout(() => {
+          setPhase("done");
+          const winner = reelGames.find((g) => g.key === winnerKey);
+          const href = winner?.route ?? "/play";
+          setCountdown(REDIRECT_COUNTDOWN);
+          redirectTimerRef.current = window.setInterval(() => {
+            setCountdown((prev) => {
+              if (prev === null) return null;
+              if (prev <= 1) {
+                if (redirectTimerRef.current) {
+                  window.clearInterval(redirectTimerRef.current);
+                  redirectTimerRef.current = null;
+                }
+                router.push(href);
+                return 0;
               }
-              router.push(href);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      }, SPIN_MS + 200);
+              return prev - 1;
+            });
+          }, 1000);
+        }, DECEL_MS + 150);
+      }, waitMore);
     });
   };
 
@@ -176,7 +232,7 @@ export function RouletteModal({
       aria-modal="true"
       aria-label="Ruleta del juego del día"
       onClick={() => {
-        if (phase === "idle" || phase === "done" || phase === "error") onClose();
+        if (phase !== "spinning") onClose();
       }}
       style={{
         position: "fixed",
@@ -205,7 +261,7 @@ export function RouletteModal({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          disabled={phase === "spinning" || phase === "settling"}
+          disabled={phase === "spinning"}
           className="btn btn-ghost btn-icon btn-sm"
           style={{ position: "absolute", top: 12, right: 12 }}
         >
@@ -215,26 +271,28 @@ export function RouletteModal({
         {phase === "idle" && (
           <Intro
             onSpin={handleSpin}
-            available={liveGames.length}
+            available={eligibleGames.length}
+            totalLive={reelGames.length}
             pending={isPending}
           />
         )}
 
-        {(phase === "spinning" || phase === "settling") && (
-          <SpinningHeader />
-        )}
+        {phase === "spinning" && <SpinningHeader />}
 
         {phase === "done" && result?.pick && (
-          <ResultHeader result={result} games={games} />
+          <ResultHeader result={result} games={reelGames} />
         )}
 
         {phase === "error" && (
           <ErrorBlock message={result?.error ?? "No se pudo girar la ruleta"} />
         )}
 
-        {phase !== "error" && (
+        {phase === "empty" && <EmptyState />}
+
+        {(phase === "idle" || phase === "spinning" || phase === "done") && (
           <Reel
-            games={liveGames}
+            games={reelGames}
+            excludeSet={excludeSet}
             pickedKey={pickedKey}
             reelRef={reelRef}
           />
@@ -243,7 +301,7 @@ export function RouletteModal({
         {phase === "done" && result?.pick && (
           <DoneActions
             gameKey={result.pick.gameKey}
-            games={games}
+            games={reelGames}
             onClose={onClose}
             countdown={countdown}
             onCancelRedirect={cancelRedirect}
@@ -268,13 +326,16 @@ export function RouletteModal({
 function Intro({
   onSpin,
   available,
+  totalLive,
   pending,
 }: {
   onSpin: () => void;
   available: number;
+  totalLive: number;
   pending: boolean;
 }) {
   const disabled = available === 0 || pending;
+  const usedThisWeek = totalLive - available;
   return (
     <>
       <div className="grid place-items-center" style={{ marginBottom: 8 }}>
@@ -293,7 +354,7 @@ function Intro({
         </div>
       </div>
       <h2 className="t-display-md" style={{ margin: "10px 0 6px" }}>
-        Gira la ruleta
+        ¡Selecciona un juego!
       </h2>
       <p className="t-body text-muted" style={{ margin: "0 0 6px" }}>
         Hoy aún no tienen juego asignado. Tú decides para toda la patrulla.
@@ -304,12 +365,10 @@ function Intro({
       >
         +10 pts para ti y tu patrulla por ser el elector del día
       </p>
-      {available === 0 && (
-        <p
-          className="t-caption"
-          style={{ color: "var(--c-rose)", marginTop: 12 }}
-        >
-          No hay minijuegos disponibles todavía. Vuelve pronto.
+      {usedThisWeek > 0 && (
+        <p className="t-caption text-muted" style={{ marginTop: 4 }}>
+          {usedThisWeek} {usedThisWeek === 1 ? "ya jugado" : "ya jugados"} esta
+          semana · {available} {available === 1 ? "disponible" : "disponibles"}
         </p>
       )}
       <button
@@ -399,12 +458,46 @@ function ErrorBlock({ message }: { message: string }) {
   );
 }
 
+function EmptyState() {
+  return (
+    <>
+      <div className="grid place-items-center" style={{ marginBottom: 12 }}>
+        <div
+          className="grid place-items-center"
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 999,
+            background:
+              "color-mix(in oklch, var(--accent) 18%, transparent)",
+            color: "var(--accent)",
+          }}
+        >
+          <ScoutIcon name="trophy" size={28} />
+        </div>
+      </div>
+      <h2 className="t-display-md" style={{ margin: "10px 0 6px" }}>
+        Ya jugaron todos
+      </h2>
+      <p
+        className="t-body-sm text-muted"
+        style={{ margin: 0, maxWidth: 380, marginInline: "auto" }}
+      >
+        Tu patrulla ya pasó por cada minijuego esta semana. Espera al próximo
+        Jamboree para que la ruleta se reactive.
+      </p>
+    </>
+  );
+}
+
 function Reel({
   games,
+  excludeSet,
   pickedKey,
   reelRef,
 }: {
   games: GameDefinition[];
+  excludeSet: Set<string>;
   pickedKey: string | null;
   reelRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -472,7 +565,12 @@ function Reel({
         }}
       >
         {reel.map((g, i) => (
-          <ReelCard key={`${g.key}-${i}`} game={g} highlight={g.key === pickedKey} />
+          <ReelCard
+            key={`${g.key}-${i}`}
+            game={g}
+            highlight={g.key === pickedKey}
+            disabled={excludeSet.has(g.key)}
+          />
         ))}
       </div>
     </div>
@@ -482,9 +580,11 @@ function Reel({
 function ReelCard({
   game,
   highlight,
+  disabled,
 }: {
   game: GameDefinition;
   highlight: boolean;
+  disabled: boolean;
 }) {
   return (
     <div
@@ -512,7 +612,8 @@ function ReelCard({
           border: highlight
             ? "1px solid color-mix(in oklch, var(--primary) 50%, transparent)"
             : "1px solid var(--border)",
-          transition: "background 200ms, border-color 200ms",
+          opacity: disabled && !highlight ? 0.45 : 1,
+          transition: "background 200ms, border-color 200ms, opacity 200ms",
         }}
       >
         <div
@@ -537,7 +638,9 @@ function ReelCard({
               className="h-[80%] w-auto object-contain"
               style={{
                 filter:
-                  game.status === "live" ? undefined : "grayscale(0.6) opacity(0.7)",
+                  disabled && !highlight
+                    ? "grayscale(0.8) opacity(0.8)"
+                    : undefined,
               }}
             />
           ) : (
@@ -555,7 +658,7 @@ function ReelCard({
             className="t-caption text-muted"
             style={{ marginTop: 4, lineHeight: 1.3 }}
           >
-            {game.status === "live" ? game.tagline : "Próximamente"}
+            {disabled ? "Ya jugado esta semana" : game.tagline}
           </div>
         </div>
       </div>

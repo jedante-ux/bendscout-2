@@ -139,7 +139,7 @@ export function MemoryGame({
       <div
         className="grid"
         style={{
-          gridTemplateColumns: "repeat(8, 1fr)",
+          gridTemplateColumns: "repeat(6, 1fr)",
           gap: 4,
         }}
       >
@@ -265,11 +265,11 @@ function MemoryCard({
             color: "oklch(0.18 0.05 250)",
           }}
         >
-          <span style={{ fontSize: 13, lineHeight: 1 }}>{card.knot.emoji}</span>
+          <span style={{ fontSize: 18, lineHeight: 1 }}>{card.knot.emoji}</span>
           <span
             className="t-caption"
             style={{
-              fontSize: 7,
+              fontSize: 9,
               fontWeight: 800,
               textAlign: "center",
               lineHeight: 1.05,
