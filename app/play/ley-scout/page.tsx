@@ -8,6 +8,7 @@ import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
 import { TeamChat } from "@/components/scout/team-chat";
 import { MatchingGame } from "@/components/games/matching-game";
+import { GameStartOverlay } from "@/components/games/game-start-overlay";
 import { ScoutIcon } from "@/components/scout/icon";
 import { LEY_SCOUT_ROUNDS } from "@/lib/games/matching/ley-scout";
 import {
@@ -87,6 +88,7 @@ function LeyScoutPageInner() {
   const [livesUsed, setLivesUsed] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [started, setStarted] = useState(false);
   const startedAtRef = useRef<number>(0);
   const [, startTransition] = useTransition();
 
@@ -103,6 +105,7 @@ function LeyScoutPageInner() {
     setLivesUsed(0);
     setElapsed(0);
     setPaused(false);
+    setStarted(false);
     setSubmitResult(null);
     startedAtRef.current = Date.now();
 
@@ -192,10 +195,10 @@ function LeyScoutPageInner() {
 
   // Tick timer while playing.
   useEffect(() => {
-    if (phase !== "play" || paused) return;
+    if (phase !== "play" || paused || !started) return;
     const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => window.clearInterval(id);
-  }, [phase, paused]);
+  }, [phase, paused, started]);
 
   const submitScore = useCallback(
     (finalScore: number, outcome: "done" | "fail") => {
@@ -369,6 +372,13 @@ function LeyScoutPageInner() {
             onMatch={handleMatch}
             onWrong={handleWrong}
             onComplete={handleRoundComplete}
+          />
+        )}
+
+        {phase === "play" && !started && (
+          <GameStartOverlay
+            onStart={() => setStarted(true)}
+            hint="Conecta cada artículo con su completación"
           />
         )}
 

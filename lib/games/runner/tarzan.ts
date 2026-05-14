@@ -14,17 +14,30 @@ export const TARZAN_GAME = {
   // Corredor
   runner: {
     x: 100,
-    width: 60,
-    heightRun: 110,
-    heightDuck: 65,
+    width: 56,
+    heightRun: 90,
+    heightDuck: 56,
     gravity: 0.85,       // px/frame²
     jumpImpulse: -17,    // px/frame (negativo = arriba)
     duckFallBoost: 1.1,  // gravedad extra al estar agachado en el aire
+    /**
+     * Insets en píxeles del SPRITE ORIGINAL, aplicados DESPUÉS del recorte
+     * automático por alpha. Sirven para apretar más la hitbox sobre el
+     * personaje. El personaje corre hacia la derecha — `front` recorta el
+     * lado derecho del sprite, `back` el izquierdo.
+     */
+    spriteInset: {
+      top: 0,
+      bottom: 4,
+      front: 14,
+      back: 0,
+    },
   },
 
-  // Obstáculos: piedra (suelo, hay que SALTAR) y rama (alta, hay que AGACHARSE).
+  // Obstáculos: culebra (suelo, hay que SALTAR) y rama (alta, hay que AGACHARSE).
   obstacles: {
-    rock: { width: 52, height: 54 },
+    // El alto manda; el ancho se deriva del aspect-ratio del sprite recortado.
+    snake: { height: 54 },
     branch: {
       width: 130,
       height: 32,

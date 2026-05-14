@@ -1,26 +1,16 @@
 "use client";
 
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GameShell } from "@/components/scout/game-shell";
 import { GameIntroCard } from "@/components/scout/game-intro-card";
 import { ScoresPanel } from "@/components/scout/scores-panel";
 import { TeamChat } from "@/components/scout/team-chat";
-import { ScoutIcon } from "@/components/scout/icon";
-import {
-  TarzanRunner,
-  type TarzanRunnerHandle,
-} from "@/components/games/tarzan-runner";
+import { MemoryGame } from "@/components/games/memory-game";
 import { GameStartOverlay } from "@/components/games/game-start-overlay";
+import { ScoutIcon } from "@/components/scout/icon";
+import { KNOTS } from "@/lib/games/memory/knots";
 import {
   finishAttempt,
   getGameDayStatus,
@@ -38,7 +28,13 @@ import type {
   StartAttemptResult,
 } from "@/types/database";
 
-const GAME_KEY = "tarzan";
+const GAME_KEY = "recordando-nudos";
+const MATCH_BONUS = 70;
+const WRONG_PENALTY = 20;
+const MAX_LIVES = 5;
+/** Bonus por terminar bajo 3min: max(0, 180 - elapsed) × 4 */
+const TIME_BONUS_WINDOW = 180;
+const TIME_BONUS_MULT = 4;
 
 type Phase =
   | "ready"
@@ -46,6 +42,7 @@ type Phase =
   | "play"
   | "submitting"
   | "done"
+  | "fail"
   | "blocked";
 
 interface ActiveAttempt {
@@ -60,18 +57,19 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function TarzanPage() {
+export default function RecordandoNudosPage() {
   return (
     <Suspense fallback={null}>
-      <TarzanPageInner />
+      <RecordandoNudosPageInner />
     </Suspense>
   );
 }
 
-function TarzanPageInner() {
+function RecordandoNudosPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSandbox = searchParams.get("sandbox") === "1";
+
   const [phase, setPhase] = useState<Phase>(() =>
     isSandbox ? "play" : "ready",
   );
@@ -87,33 +85,33 @@ function TarzanPageInner() {
   const [history, setHistory] = useState<MyGameHistoryEntry[]>([]);
   const [starting, setStarting] = useState(false);
 
-  const MAX_LIVES = 3;
   const [score, setScore] = useState(0);
+  const [livesUsed, setLivesUsed] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
   const [started, setStarted] = useState(false);
-  const [livesUsed, setLivesUsed] = useState(0);
   const [attemptCount, setAttemptCount] = useState(0);
+  const scoreRef = useRef(0);
   const startedAtRef = useRef<number>(0);
-  const controlsRef = useRef<TarzanRunnerHandle | null>(null);
   const [, startTransition] = useTransition();
 
+  const livesLeft = MAX_LIVES - livesUsed;
   const meta = getGame(GAME_KEY);
 
   const beginAttempt = useCallback(() => {
     setPhase("loading");
     setStarting(true);
     setScore(0);
+    scoreRef.current = 0;
+    setLivesUsed(0);
     setElapsed(0);
     setPaused(false);
     setStarted(false);
-    setLivesUsed(0);
     setAttemptCount((c) => c + 1);
     setSubmitResult(null);
     startedAtRef.current = Date.now();
 
     if (isSandbox) {
-      // Salta el RPC: fake attempt, no toca daily_plays ni jamboree_scores.
       setAttempt({ sessionId: "sandbox", kind: "practice", no: 1 });
       setPhase("play");
       setStarting(false);
@@ -163,7 +161,7 @@ function TarzanPageInner() {
   }, []);
 
   useEffect(() => {
-    if (isSandbox) return; // No cargamos intro data en sandbox.
+    if (isSandbox) return;
     let cancelled = false;
     refreshIntroData()
       .then(({ status, scores, hist }) => {
@@ -177,28 +175,39 @@ function TarzanPageInner() {
       })
       .catch((err) => {
         console.error(err);
+        if (!cancelled) {
+          setDayStatus({
+            authenticated: true,
+            practiceDone: false,
+            attempt1Score: null,
+            attempt2Score: null,
+            scoringAttemptsUsed: 0,
+            scoringAttemptsRemaining: 2,
+            bestScore: 0,
+            dayTotal: 0,
+            blockedByOtherGame: null,
+          });
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [router, refreshIntroData, isSandbox]);
 
-  // Cronómetro mientras se juega.
   useEffect(() => {
-    if (phase !== "play" || paused) return;
+    if (phase !== "play" || paused || !started) return;
     const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => window.clearInterval(id);
-  }, [phase, paused]);
+  }, [phase, paused, started]);
 
   const submitScore = useCallback(
-    (finalScore: number) => {
+    (finalScore: number, outcome: "done" | "fail") => {
       if (!attempt) return;
 
       if (isSandbox) {
-        // No persistimos nada: solo mostramos el resultado.
         setScore(finalScore);
         setSubmitResult(null);
-        setPhase("done");
+        setPhase(outcome);
         return;
       }
 
@@ -213,25 +222,47 @@ function TarzanPageInner() {
             durationMs,
           );
           setSubmitResult(res);
-          setPhase("done");
+          setPhase(outcome);
         } catch (err) {
           console.error(err);
           setSubmitResult(null);
-          setPhase("done");
+          setPhase(outcome);
         }
       });
     },
     [attempt, isSandbox],
   );
 
-  const handleGameOver = useCallback(
-    (finalScore: number) => {
-      setScore(finalScore);
-      setStarted(false);
-      submitScore(finalScore);
-    },
-    [submitScore],
-  );
+  const handleMatch = () => {
+    setScore((s) => {
+      const next = s + MATCH_BONUS;
+      scoreRef.current = next;
+      return next;
+    });
+  };
+
+  const handleWrong = () => {
+    setScore((s) => {
+      const next = Math.max(0, s - WRONG_PENALTY);
+      scoreRef.current = next;
+      return next;
+    });
+    setLivesUsed((l) => {
+      const next = l + 1;
+      if (next >= MAX_LIVES) {
+        setTimeout(() => submitScore(scoreRef.current, "fail"), 0);
+      }
+      return next;
+    });
+  };
+
+  const handleComplete = () => {
+    const timeBonus = Math.max(0, TIME_BONUS_WINDOW - elapsed) * TIME_BONUS_MULT;
+    const finalScore = scoreRef.current + timeBonus;
+    scoreRef.current = finalScore;
+    setScore(finalScore);
+    submitScore(finalScore, "done");
+  };
 
   const handleRetry = () => beginAttempt();
   const handleBackToIntro = useCallback(() => {
@@ -257,9 +288,11 @@ function TarzanPageInner() {
     if (phase === "blocked") return "Bloqueado";
     if (phase === "submitting") return "Guardando…";
     if (attempt) {
-      return attempt.kind === "practice" ? "Práctica" : `Intento ${attempt.no}/2`;
+      return attempt.kind === "practice"
+        ? "Práctica"
+        : `Intento ${attempt.no}/2`;
     }
-    return "Pista de Tarzán";
+    return "Recordando nudos";
   }, [phase, attempt]);
 
   if (phase === "ready") {
@@ -268,10 +301,10 @@ function TarzanPageInner() {
         {dayStatus ? (
           <>
             <GameIntroCard
-              title={meta?.title ?? "Pista de Tarzán"}
+              title={meta?.title ?? "Recordando nudos"}
               tagline={
                 meta?.tagline ??
-                "Salta piedras y agáchate bajo las ramas. ¡Cada vez es más rápido!"
+                "Voltea las cartas y empareja los nudos y amarres scout."
               }
               imageSrc={meta?.imageSrc}
               emoji={meta?.emoji}
@@ -283,7 +316,7 @@ function TarzanPageInner() {
               starting={starting}
             />
             <ScoresPanel
-              gameTitle={meta?.title ?? "Pista de Tarzán"}
+              gameTitle={meta?.title ?? "Recordando nudos"}
               dayStatus={dayStatus}
               todayScores={todayScores}
               history={history}
@@ -299,12 +332,12 @@ function TarzanPageInner() {
 
   return (
     <GameShell
-      title="PISTA DE TARZÁN"
+      title="RECORDANDO NUDOS"
       level={headerLevel}
       time={formatTime(elapsed)}
       points={score}
-      lives={0}
-      livesUsed={0}
+      lives={MAX_LIVES}
+      livesUsed={livesUsed}
       footer={
         <div className="flex items-center gap-2">
           <button
@@ -330,32 +363,22 @@ function TarzanPageInner() {
       <AttemptBadge attempt={attempt} phase={phase} />
 
       <div className="relative flex-1 py-2">
-        {(phase === "play" || phase === "submitting" || phase === "done") && (
+        {phase === "play" && (
           <>
-            <div className="relative mx-auto" style={{ maxWidth: 520 }}>
-              <TarzanRunner
-                key={attemptCount}
-                paused={paused || phase !== "play" || !started}
-                maxLives={MAX_LIVES}
-                onScoreChange={setScore}
-                onLivesChange={setLivesUsed}
-                onGameOver={handleGameOver}
-                controlsRef={controlsRef}
-              />
-              {phase === "play" && !started && (
-                <GameStartOverlay
-                  onStart={() => setStarted(true)}
-                  hint="Espacio = saltar · ↓ = agacharse"
-                />
-              )}
-            </div>
-            <RunnerControls
-              disabled={phase !== "play" || paused || !started}
-              onJump={() => controlsRef.current?.jump()}
-              onDuckDown={() => controlsRef.current?.setDuck(true)}
-              onDuckUp={() => controlsRef.current?.setDuck(false)}
+            <MemoryGame
+              key={attemptCount}
+              knots={KNOTS}
+              interactive={started && !paused}
+              onMatch={handleMatch}
+              onWrong={handleWrong}
+              onComplete={handleComplete}
             />
-            <HeartsRow maxLives={MAX_LIVES} livesUsed={livesUsed} />
+            {!started && (
+              <GameStartOverlay
+                onStart={() => setStarted(true)}
+                hint="Toca las cartas para emparejar los nudos"
+              />
+            )}
           </>
         )}
 
@@ -365,8 +388,23 @@ function TarzanPageInner() {
         {phase === "done" && (
           <FinishOverlay
             score={score}
+            livesLeft={livesLeft}
             elapsed={elapsed}
             onRetry={handleRetry}
+            variant="win"
+            result={submitResult}
+            attempt={attempt}
+            isSandbox={isSandbox}
+          />
+        )}
+
+        {phase === "fail" && (
+          <FinishOverlay
+            score={score}
+            livesLeft={0}
+            elapsed={elapsed}
+            onRetry={handleRetry}
+            variant="lose"
             result={submitResult}
             attempt={attempt}
             isSandbox={isSandbox}
@@ -380,120 +418,6 @@ function TarzanPageInner() {
         )}
       </div>
     </GameShell>
-  );
-}
-
-function HeartsRow({
-  maxLives,
-  livesUsed,
-}: {
-  maxLives: number;
-  livesUsed: number;
-}) {
-  const hearts = Array.from({ length: maxLives }, (_, i) => i < maxLives - livesUsed);
-  return (
-    <div
-      className="mt-4 flex items-center justify-center"
-      style={{ gap: 14 }}
-      aria-label={`Vidas: ${maxLives - livesUsed} de ${maxLives}`}
-    >
-      {hearts.map((alive, i) => (
-        <span
-          key={i}
-          aria-hidden
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 14,
-            display: "grid",
-            placeItems: "center",
-            background: alive
-              ? "color-mix(in oklch, var(--c-rose) 22%, transparent)"
-              : "color-mix(in oklch, var(--fg) 6%, transparent)",
-            border: `1.5px solid ${
-              alive
-                ? "color-mix(in oklch, var(--c-rose) 55%, transparent)"
-                : "var(--border)"
-            }`,
-            color: alive ? "var(--c-rose)" : "var(--fg-soft)",
-            transition: "all 240ms var(--ease-out-quint)",
-            transform: alive ? "scale(1)" : "scale(0.85)",
-            opacity: alive ? 1 : 0.45,
-            filter: alive
-              ? "drop-shadow(0 4px 10px color-mix(in oklch, var(--c-rose) 30%, transparent))"
-              : "none",
-          }}
-        >
-          <ScoutIcon name="heart" size={26} stroke={2.4} />
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function RunnerControls({
-  disabled,
-  onJump,
-  onDuckDown,
-  onDuckUp,
-}: {
-  disabled: boolean;
-  onJump: () => void;
-  onDuckDown: () => void;
-  onDuckUp: () => void;
-}) {
-  return (
-    <div
-      className="mt-3 grid select-none gap-3"
-      style={{ gridTemplateColumns: "1fr 1fr" }}
-    >
-      <button
-        type="button"
-        disabled={disabled}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          onDuckDown();
-        }}
-        onPointerUp={(e) => {
-          e.preventDefault();
-          onDuckUp();
-        }}
-        onPointerLeave={onDuckUp}
-        onPointerCancel={onDuckUp}
-        className="btn btn-secondary btn-lg"
-        style={{
-          padding: "20px 12px",
-          fontSize: 16,
-          fontWeight: 800,
-          letterSpacing: "0.04em",
-          touchAction: "manipulation",
-        }}
-      >
-        <ScoutIcon name="arrow" size={18} stroke={2.4} /> AGACHARSE
-      </button>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onJump}
-        onTouchStart={(e) => {
-          // Disparo inmediato en touch (sin esperar el delay de click) y
-          // detenemos el evento para que no se duplique con el onClick.
-          e.preventDefault();
-          onJump();
-        }}
-        className="btn btn-primary btn-lg"
-        style={{
-          padding: "20px 12px",
-          fontSize: 16,
-          fontWeight: 800,
-          letterSpacing: "0.04em",
-          touchAction: "manipulation",
-          WebkitTapHighlightColor: "transparent",
-        }}
-      >
-        <ScoutIcon name="arrow" size={18} stroke={2.4} /> SALTAR
-      </button>
-    </div>
   );
 }
 
@@ -610,7 +534,7 @@ function LoadingOverlay() {
           <ScoutIcon name="sparkle" size={22} className="text-primary-token" />
         </div>
         <p className="t-body-sm text-muted" style={{ marginTop: 12 }}>
-          Preparando la pista…
+          Mezclando las cartas…
         </p>
       </div>
     </Overlay>
@@ -637,19 +561,24 @@ function SubmittingOverlay() {
 
 function FinishOverlay({
   score,
+  livesLeft,
   elapsed,
   onRetry,
+  variant,
   result,
   attempt,
   isSandbox,
 }: {
   score: number;
+  livesLeft: number;
   elapsed: number;
   onRetry: () => void;
+  variant: "win" | "lose";
   result: FinishAttemptResult | null;
   attempt: ActiveAttempt | null;
   isSandbox: boolean;
 }) {
+  const isWin = variant === "win";
   const wasScoring = attempt?.kind === "scoring" && !isSandbox;
   const showRetryButton =
     isSandbox ||
@@ -664,26 +593,35 @@ function FinishOverlay({
           style={{
             width: 72,
             height: 72,
-            background: "color-mix(in oklch, var(--c-rose) 22%, transparent)",
-            color: "var(--c-rose)",
+            background: isWin
+              ? "color-mix(in oklch, var(--primary) 22%, transparent)"
+              : "color-mix(in oklch, var(--c-rose) 22%, transparent)",
+            color: isWin ? "var(--primary)" : "var(--c-rose)",
           }}
         >
-          <ScoutIcon name="heart" size={36} stroke={2} />
+          <ScoutIcon name={isWin ? "trophy" : "heart"} size={36} stroke={2} />
         </div>
         <h3 className="t-display-md" style={{ marginTop: 14 }}>
-          ¡Ya valiste!
+          {isWin
+            ? attempt?.kind === "practice"
+              ? "¡Práctica completa!"
+              : "¡Memoria de hierro!"
+            : "Sin vidas"}
         </h3>
         <p className="t-body-sm text-muted" style={{ marginTop: 4 }}>
           {isSandbox
             ? "Modo prueba: nada se guarda al Jamboree."
             : attempt?.kind === "practice"
               ? "Suma 20 puntos por la práctica a tu semana."
-              : "Tu mejor de dos intentos cuenta para el Jamboree."}
+              : isWin
+                ? "Tu mejor de dos intentos cuenta para el Jamboree."
+                : "Inténtalo de nuevo, tu patrulla cuenta contigo."}
         </p>
 
-        <div className="grid grid-cols-2 gap-2" style={{ marginTop: 16 }}>
+        <div className="grid grid-cols-3 gap-2" style={{ marginTop: 16 }}>
           <Stat label="Score" value={score.toLocaleString("es")} highlight />
           <Stat label="Tiempo" value={formatTime(elapsed)} />
+          <Stat label="Vidas" value={`${livesLeft}/${MAX_LIVES}`} />
         </div>
 
         {result && wasScoring && (
@@ -834,7 +772,10 @@ function Stat({
   return (
     <div
       className="rounded-xl border px-3 py-2"
-      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+      style={{
+        background: "var(--surface)",
+        borderColor: "var(--border)",
+      }}
     >
       <div className="t-overline text-muted">{label}</div>
       <div

@@ -36,6 +36,18 @@ export const GAMES: GameDefinition[] = [
     status: "soon",
   },
   {
+    key: "recordando-nudos",
+    title: "Recordando nudos",
+    tagline:
+      "Voltea cartas y empareja los 18 nudos y amarres scout. ¡Memoria de hierro!",
+    category: "knots",
+    difficulties: ["easy", "medium", "hard"],
+    emoji: "🪢",
+    imageSrc: "/icons/nudos.png",
+    status: "live",
+    route: "/play/recordando-nudos",
+  },
+  {
     key: "law-shuffle",
     title: "Ley en Orden",
     tagline:

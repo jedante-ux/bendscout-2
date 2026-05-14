@@ -48,6 +48,7 @@ const GAMES: Game[] = [
   { id: "ley", gameKey: "ley-scout", title: "Ley en Orden", sub: "Conecta cada artículo", color: "mint", emoji: "📜", time: "2 min", imageSrc: "/icons/fogata.png", href: "/play/ley-scout", isNew: true },
   { id: "tar", gameKey: "tarzan", title: "Pista de Tarzán", sub: "Salta y agáchate sin parar", color: "teal", emoji: "🌴", time: "1 min", imageSrc: "/icons/tarzan.png", href: "/play/tarzan", isNew: true },
   { id: "knot", gameKey: "knot-rush", title: "Maestro Nudos", sub: "Identifica el nudo correcto", color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", isNew: true },
+  { id: "recnud", gameKey: "recordando-nudos", title: "Recordando nudos", sub: "Empareja 18 nudos y amarres", color: "orange", emoji: "🪢", time: "3 min", imageSrc: "/icons/nudos.png", href: "/play/recordando-nudos", isNew: true },
   { id: "morse", gameKey: "morse", title: "Código Morse", sub: "Descifra el mensaje", color: "rose", emoji: "📡", time: "2 min", locked: true },
   { id: "star", gameKey: "star-map", title: "Mapa Estelar", sub: "Conecta las constelaciones", color: "purple", emoji: "✨", time: "3 min", locked: true },
   { id: "first", gameKey: "first-response", title: "Primeros Aux.", sub: "Actúa rápido y bien", color: "teal", emoji: "🚑", time: "2 min", locked: true },

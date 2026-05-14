@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { TARZAN_GAME } from "@/lib/games/runner/tarzan";
 
-type ObstacleKind = "rock" | "branch";
+type ObstacleKind = "snake" | "branch";
 
 interface Obstacle {
   kind: ObstacleKind;
@@ -30,7 +30,11 @@ export interface TarzanRunnerHandle {
 
 export interface TarzanRunnerProps {
   paused: boolean;
+  /** Vidas máximas. Default 3. Cada colisión gasta una con ~1.3s de invulnerabilidad. */
+  maxLives?: number;
   onScoreChange?: (score: number) => void;
+  /** Se llama cada vez que el jugador pierde una vida (livesUsed = nuevas usadas). */
+  onLivesChange?: (livesUsed: number) => void;
   onGameOver: (finalScore: number) => void;
   /** Permite al padre obtener el handle imperativo. */
   controlsRef?: React.Ref<TarzanRunnerHandle>;
@@ -44,7 +48,9 @@ export interface TarzanRunnerProps {
  */
 export function TarzanRunner({
   paused,
+  maxLives = 3,
   onScoreChange,
+  onLivesChange,
   onGameOver,
   controlsRef,
 }: TarzanRunnerProps) {
@@ -63,6 +69,8 @@ export function TarzanRunner({
   const scoreEmitTickRef = useRef(0);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const groundOffsetRef = useRef(0);
+  const livesUsedRef = useRef(0);
+  const invincibleUntilRef = useRef(0); // performance.now() ms hasta el cual el corredor es invulnerable
 
   const runnerRef = useRef<RunnerState>({
     y: TARZAN_GAME.world.groundY - TARZAN_GAME.runner.heightRun,
@@ -84,9 +92,16 @@ export function TarzanRunner({
     if (!aliveRef.current || pausedRef.current) return;
     const r = runnerRef.current;
     if (r.onGround) {
+      // Si estaba agachado, r.y está en la posición baja (groundY - heightDuck);
+      // si aplicamos el impulso desde ahí, el chequeo de aterrizaje (que ya
+      // usa heightRun porque ducking=false) lo come en 1 frame. Restauramos
+      // a la posición de corriendo antes de saltar.
+      if (r.ducking) {
+        r.y = TARZAN_GAME.world.groundY - TARZAN_GAME.runner.heightRun;
+        r.ducking = false;
+      }
       r.vy = TARZAN_GAME.runner.jumpImpulse;
       r.onGround = false;
-      r.ducking = false;
     }
   }, []);
 
@@ -124,6 +139,115 @@ export function TarzanRunner({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Preload del sprite del personaje. El loop renderiza rect placeholder
+    // hasta que `tarzanImgLoaded` sea true. Al cargar, computamos el
+    // bounding box opaco (alpha > umbral) para recortar el excedente
+    // transparente — así la hitbox coincide con el personaje real.
+    // Helper genérico: calcula el bounding box opaco de una imagen y aplica
+    // insets opcionales (en px del sprite original). Devuelve {sx,sy,sw,sh}
+    // listos para pasar a drawImage(img, sx, sy, sw, sh, ...).
+    const computeAlphaCrop = (
+      img: HTMLImageElement,
+      inset: { top: number; bottom: number; front: number; back: number } = {
+        top: 0,
+        bottom: 0,
+        front: 0,
+        back: 0,
+      },
+    ): { sx: number; sy: number; sw: number; sh: number } => {
+      const iw = img.width;
+      const ih = img.height;
+      let bounds = { sx: 0, sy: 0, sw: iw, sh: ih };
+      const off = document.createElement("canvas");
+      off.width = iw;
+      off.height = ih;
+      const octx = off.getContext("2d");
+      if (!octx) return bounds;
+      octx.drawImage(img, 0, 0);
+      try {
+        const data = octx.getImageData(0, 0, iw, ih).data;
+        let minX = iw;
+        let minY = ih;
+        let maxX = -1;
+        let maxY = -1;
+        const alphaThreshold = 16;
+        for (let y = 0; y < ih; y++) {
+          for (let x = 0; x < iw; x++) {
+            const a = data[(y * iw + x) * 4 + 3];
+            if (a > alphaThreshold) {
+              if (x < minX) minX = x;
+              if (y < minY) minY = y;
+              if (x > maxX) maxX = x;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX >= 0 && maxY >= 0) {
+          const sx = Math.max(0, minX + inset.back);
+          const sy = Math.max(0, minY + inset.top);
+          const ex = Math.min(iw, maxX + 1 - inset.front);
+          const ey = Math.min(ih, maxY + 1 - inset.bottom);
+          bounds = {
+            sx,
+            sy,
+            sw: Math.max(1, ex - sx),
+            sh: Math.max(1, ey - sy),
+          };
+        }
+      } catch {
+        /* CORS u otro fallo: deja la imagen entera */
+      }
+      return bounds;
+    };
+
+    const tarzanImg = new window.Image();
+    tarzanImg.src = "/icons/scout-corre-1.png";
+    let tarzanImgLoaded = false;
+    let tarzanCrop = { sx: 0, sy: 0, sw: 1, sh: 1, aspect: 1 };
+    tarzanImg.onload = () => {
+      const b = computeAlphaCrop(tarzanImg, TARZAN_GAME.runner.spriteInset);
+      tarzanCrop = { ...b, aspect: b.sw / b.sh };
+      tarzanImgLoaded = true;
+    };
+
+    // Sprite "dash" — se usa al agacharse. La hitbox sigue siendo más baja
+    // (heightDuck) pero el sprite se dibuja al MISMO alto que corriendo
+    // para no distorsionarlo; el aspect-ratio del crop define el ancho.
+    const dashImg = new window.Image();
+    dashImg.src = "/icons/dash.png";
+    let dashImgLoaded = false;
+    let dashCrop = { sx: 0, sy: 0, sw: 1, sh: 1, aspect: 2 };
+    dashImg.onload = () => {
+      const b = computeAlphaCrop(dashImg);
+      dashCrop = { ...b, aspect: b.sw / b.sh };
+      dashImgLoaded = true;
+    };
+
+    // Culebra: obstáculo de suelo, hay que SALTAR.
+    const snakeImg = new window.Image();
+    snakeImg.src = "/icons/culebra.png";
+    let snakeImgLoaded = false;
+    let snakeCrop = { sx: 0, sy: 0, sw: 1, sh: 1, aspect: 2 };
+    snakeImg.onload = () => {
+      const b = computeAlphaCrop(snakeImg);
+      snakeCrop = { ...b, aspect: b.sw / b.sh };
+      snakeImgLoaded = true;
+    };
+
+    // Nubes: dos sprites alternados para el parallax del cielo.
+    const cloud1 = new window.Image();
+    cloud1.src = "/icons/nube1.png";
+    let cloud1Loaded = false;
+    cloud1.onload = () => {
+      cloud1Loaded = true;
+    };
+    const cloud2 = new window.Image();
+    cloud2.src = "/icons/nube2.png";
+    let cloud2Loaded = false;
+    cloud2.onload = () => {
+      cloud2Loaded = true;
+    };
+
     // Reset state for fresh run.
     aliveRef.current = true;
     lastTsRef.current = 0;
@@ -135,6 +259,8 @@ export function TarzanRunner({
     scoreEmitTickRef.current = 0;
     obstaclesRef.current = [];
     groundOffsetRef.current = 0;
+    livesUsedRef.current = 0;
+    invincibleUntilRef.current = 0;
     runnerRef.current = {
       y: TARZAN_GAME.world.groundY - TARZAN_GAME.runner.heightRun,
       vy: 0,
@@ -173,12 +299,18 @@ export function TarzanRunner({
           passed: false,
         });
       } else {
+        // Culebra en el suelo. El alto manda; el ancho sale del aspect del
+        // sprite recortado para no deformar la imagen. Si el sprite no
+        // cargó todavía, asumimos ~2:1 como fallback.
+        const sh = TARZAN_GAME.obstacles.snake.height;
+        const aspect = snakeImgLoaded ? snakeCrop.aspect : 2;
+        const sw = sh * aspect;
         obstaclesRef.current.push({
-          kind: "rock",
+          kind: "snake",
           x: W + 20,
-          y: GROUND - TARZAN_GAME.obstacles.rock.height,
-          width: TARZAN_GAME.obstacles.rock.width,
-          height: TARZAN_GAME.obstacles.rock.height,
+          y: GROUND - sh,
+          width: sw,
+          height: sh,
           passed: false,
         });
       }
@@ -206,43 +338,31 @@ export function TarzanRunner({
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, GROUND);
 
-      // Nubes parallax (lentas).
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      const cloudOffset = -(groundOffsetRef.current * 0.15) % 260;
-      for (let i = 0; i < 5; i++) {
-        const cx = cloudOffset + i * 260;
-        const cy = 80 + (i % 2) * 50;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, 30, 14, 0, 0, Math.PI * 2);
-        ctx.ellipse(cx + 26, cy + 4, 22, 12, 0, 0, Math.PI * 2);
-        ctx.ellipse(cx + 52, cy, 28, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Silueta de selva al fondo (parallax medio).
-      ctx.fillStyle = "rgba(31, 70, 40, 0.85)";
-      const farOffset = -(groundOffsetRef.current * 0.3) % 160;
-      for (let i = 0; i < 8; i++) {
-        const x = farOffset + i * 160;
-        ctx.beginPath();
-        ctx.moveTo(x, GROUND - 110);
-        ctx.lineTo(x + 40, GROUND - 180);
-        ctx.lineTo(x + 80, GROUND - 110);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Silueta cercana (parallax rápido).
-      ctx.fillStyle = "rgba(20, 50, 28, 0.95)";
-      const nearOffset = -(groundOffsetRef.current * 0.55) % 110;
-      for (let i = 0; i < 12; i++) {
-        const x = nearOffset + i * 110;
-        ctx.beginPath();
-        ctx.moveTo(x, GROUND);
-        ctx.lineTo(x + 22, GROUND - 70);
-        ctx.lineTo(x + 44, GROUND);
-        ctx.closePath();
-        ctx.fill();
+      // Nubes parallax (lentas). Usa los sprites nube1/nube2 alternados;
+      // si aún no cargaron, cae a unas elipses suaves.
+      const cloudSpacing = 260;
+      const cloudOffset = -(groundOffsetRef.current * 0.15) % cloudSpacing;
+      const cloudCount = Math.ceil(W / cloudSpacing) + 2;
+      for (let i = 0; i < cloudCount; i++) {
+        const cx = cloudOffset + i * cloudSpacing;
+        const cy = 60 + (i % 2) * 40;
+        const useFirst = i % 2 === 0;
+        const img = useFirst ? cloud1 : cloud2;
+        const loaded = useFirst ? cloud1Loaded : cloud2Loaded;
+        if (loaded && img.naturalWidth > 0) {
+          // Tamaño objetivo: 140px ancho, mantiene aspect ratio.
+          const targetW = useFirst ? 150 : 130;
+          const aspect = img.naturalHeight / img.naturalWidth;
+          const targetH = targetW * aspect;
+          ctx.drawImage(img, cx, cy, targetW, targetH);
+        } else {
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.beginPath();
+          ctx.ellipse(cx + 40, cy + 20, 32, 14, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx + 70, cy + 24, 24, 12, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx + 100, cy + 20, 30, 14, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       // Piso (suelo de tierra).
@@ -263,22 +383,24 @@ export function TarzanRunner({
 
       // Obstáculos.
       for (const ob of obstaclesRef.current) {
-        if (ob.kind === "rock") {
-          ctx.fillStyle = "#8a8580";
-          ctx.beginPath();
-          ctx.ellipse(
-            ob.x + ob.width / 2,
-            ob.y + ob.height / 2,
-            ob.width / 2,
-            ob.height / 2,
-            0,
-            0,
-            Math.PI * 2,
-          );
-          ctx.fill();
-          ctx.strokeStyle = "#5a544f";
-          ctx.lineWidth = 2;
-          ctx.stroke();
+        if (ob.kind === "snake") {
+          if (snakeImgLoaded) {
+            ctx.drawImage(
+              snakeImg,
+              snakeCrop.sx,
+              snakeCrop.sy,
+              snakeCrop.sw,
+              snakeCrop.sh,
+              ob.x,
+              ob.y,
+              ob.width,
+              ob.height,
+            );
+          } else {
+            // Fallback verde antes de que cargue.
+            ctx.fillStyle = "#5da13a";
+            ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+          }
         } else {
           // Branch: tronco horizontal con hojas.
           ctx.fillStyle = "#5a3a1f";
@@ -291,19 +413,77 @@ export function TarzanRunner({
         }
       }
 
-      // Corredor (placeholder).
+      // Corredor.
       const r = runnerRef.current;
       const rw = TARZAN_GAME.runner.width;
       const rh = r.ducking && r.onGround
         ? TARZAN_GAME.runner.heightDuck
         : TARZAN_GAME.runner.heightRun;
-      ctx.fillStyle = "#f4c97a";
-      ctx.fillRect(TARZAN_GAME.runner.x, r.y, rw, rh);
-      // Detalles mínimos: banda de taparrabos y "ojo".
-      ctx.fillStyle = "#b04a2a";
-      ctx.fillRect(TARZAN_GAME.runner.x, r.y + rh - 18, rw, 8);
-      ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(TARZAN_GAME.runner.x + rw - 12, r.y + 14, 5, 5);
+      const rx = TARZAN_GAME.runner.x;
+
+      // Flicker durante invulnerabilidad (~12Hz).
+      const isInvincibleNow =
+        performance.now() < invincibleUntilRef.current;
+      const flickerOn =
+        !isInvincibleNow || Math.floor(performance.now() / 80) % 2 === 0;
+
+      // Selección de sprite: al agacharse usa "dash". La hitbox (rh) ya es
+      // más baja cuando r.ducking && r.onGround, pero el sprite se dibuja
+      // proporcional al personaje normal — sólo un pelín más bajo al dash
+      // para sugerir que se está agachando.
+      const useDash = r.ducking;
+      const activeImg = useDash ? dashImg : tarzanImg;
+      const activeLoaded = useDash ? dashImgLoaded : tarzanImgLoaded;
+      const activeCrop = useDash ? dashCrop : tarzanCrop;
+
+      // Dash: 88% del alto de corriendo (sin distorsión: el ancho se
+      // recalcula con el aspect-ratio propio del sprite dash).
+      const drawH = useDash
+        ? TARZAN_GAME.runner.heightRun * 0.88
+        : TARZAN_GAME.runner.heightRun;
+      const drawW = activeLoaded ? drawH * activeCrop.aspect : rw;
+      const drawX = rx + (rw - drawW) / 2;
+      // Pies siempre apoyados en el suelo, independiente de la hitbox.
+      const drawY = TARZAN_GAME.world.groundY - drawH;
+
+      // Sombra primero (bajo el personaje).
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(
+        drawX + drawW / 2,
+        TARZAN_GAME.world.groundY + 4,
+        drawW * 0.45,
+        6,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+
+      if (flickerOn) {
+        if (activeLoaded) {
+          ctx.save();
+          if (isInvincibleNow) ctx.globalAlpha = 0.6;
+          ctx.drawImage(
+            activeImg,
+            activeCrop.sx,
+            activeCrop.sy,
+            activeCrop.sw,
+            activeCrop.sh,
+            drawX,
+            drawY,
+            drawW,
+            drawH,
+          );
+          ctx.restore();
+        } else {
+          // Placeholder hasta que cargue.
+          ctx.fillStyle = "#f4c97a";
+          ctx.fillRect(rx, r.y, rw, rh);
+          ctx.fillStyle = "#b04a2a";
+          ctx.fillRect(rx, r.y + rh - 18, rw, 8);
+        }
+      }
     };
 
     const frame = (ts: number) => {
@@ -342,8 +522,9 @@ export function TarzanRunner({
       spawnTimerRef.current -= frames;
       if (spawnTimerRef.current <= 0) {
         spawnObstacle();
-        // Jitter para que no sean perfectamente regulares.
-        spawnTimerRef.current = spawnIntervalRef.current * (0.85 + Math.random() * 0.4);
+        // Jitter amplio para que el patrón se sienta aleatorio real.
+        spawnTimerRef.current =
+          spawnIntervalRef.current * (0.65 + Math.random() * 0.75);
       }
 
       // Física del corredor.
@@ -381,26 +562,48 @@ export function TarzanRunner({
       }
       obstaclesRef.current = remaining;
 
-      // Hitbox del corredor.
+      // Hitbox del corredor: usa el ancho REAL del sprite recortado (sin el
+      // excedente transparente alrededor) para que las colisiones se sientan
+      // justas. Si el sprite aún no cargó, fallback al runner.width.
       const rh = r.ducking && r.onGround ? duckH : runH;
+      const boxW = tarzanImgLoaded
+        ? rh * tarzanCrop.aspect
+        : TARZAN_GAME.runner.width;
+      const boxX =
+        TARZAN_GAME.runner.x + (TARZAN_GAME.runner.width - boxW) / 2;
       const runnerBox = {
-        x: TARZAN_GAME.runner.x,
+        x: boxX,
         y: r.y,
-        width: TARZAN_GAME.runner.width,
+        width: boxW,
         height: rh,
       };
 
       // Colisiones + bonus al pasar.
+      const nowMs = ts;
+      const invincible = nowMs < invincibleUntilRef.current;
       for (const ob of obstaclesRef.current) {
         if (!ob.passed && ob.x + ob.width < TARZAN_GAME.runner.x) {
           ob.passed = true;
           scoreRef.current += TARZAN_GAME.scoring.obstacleClearedBonus;
         }
-        if (collides(runnerBox, ob)) {
-          aliveRef.current = false;
-          draw();
-          onGameOver(Math.round(scoreRef.current));
-          return;
+        if (!invincible && collides(runnerBox, ob)) {
+          livesUsedRef.current += 1;
+          onLivesChange?.(livesUsedRef.current);
+          // Marcar el obstáculo como "ya cobrado" para no doblar daño.
+          ob.passed = true;
+          if (livesUsedRef.current >= maxLives) {
+            aliveRef.current = false;
+            draw();
+            onGameOver(Math.round(scoreRef.current));
+            return;
+          }
+          // Invulnerabilidad ~1.2s y un pequeño rebote.
+          invincibleUntilRef.current = nowMs + 1200;
+          if (r.onGround) {
+            r.vy = -10;
+            r.onGround = false;
+          }
+          break;
         }
       }
 
