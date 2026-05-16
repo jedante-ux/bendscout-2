@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Unbounded, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -24,6 +24,18 @@ export const metadata: Metadata = {
   title: "BendScout — juega, compite, escultismo",
   description:
     "Plataforma de minijuegos educativos scout por patrullas. Aprende nudos, ley, primeros auxilios y orientación compitiendo en tropa.",
+};
+
+// viewport-fit=cover → respeta el notch / safe areas.
+// maximumScale 1 + userScalable false → evita el zoom involuntario en
+// iOS al enfocar un input y los pinch-zoom durante minijuegos.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0a1410",
 };
 
 export default function RootLayout({

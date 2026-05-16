@@ -28,12 +28,24 @@ export function GameShell({
 }: GameShellProps) {
   return (
     <div
-      className={cn("relative mx-auto flex min-h-dvh w-full max-w-md flex-col", className)}
-      style={{ background: "var(--bg)" }}
+      className={cn(
+        "relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden",
+        className,
+      )}
+      style={{
+        background: "var(--bg)",
+        // Bloquea pull-to-refresh / elastic-bounce durante el juego para
+        // que swipes accidentales no muevan la página entera.
+        overscrollBehavior: "none",
+        touchAction: "manipulation",
+      }}
     >
       <header
         className="grid items-center gap-3 px-5 py-3"
-        style={{ gridTemplateColumns: "auto 1fr auto" }}
+        style={{
+          gridTemplateColumns: "auto 1fr auto",
+          paddingTop: "max(env(safe-area-inset-top), 0.75rem)",
+        }}
       >
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 t-mono"
@@ -70,10 +82,15 @@ export function GameShell({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col px-5">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5">
+        {children}
+      </div>
 
       <footer
-        className="flex items-center justify-between gap-3 px-5 pb-5 pt-3"
+        className="flex items-center justify-between gap-3 px-5 pt-3"
+        style={{
+          paddingBottom: "max(env(safe-area-inset-bottom), 1.25rem)",
+        }}
       >
         {hints != null ? (
           <span className="hstack" style={{ color: "var(--accent)" }}>
